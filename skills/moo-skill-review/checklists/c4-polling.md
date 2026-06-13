@@ -10,7 +10,7 @@ Agent 自创轮询：
 
 ```bash
 for i in 1..12; do
-  resp=$("$DM" ... export status --task-id $ID 2>/dev/null)
+  resp=$("$CLI_BIN" ... export status --task-id $ID 2>/dev/null)
   echo "$resp" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status'))"
   st=$(echo "$resp" | python3 -c "import json,sys; print(json.load(sys.stdin).get('status'))")
   if [ "$st" = "completed" ]; then break; fi
@@ -20,7 +20,7 @@ done
 
 问题链：
 
-1. `2>/dev/null` 把所有 stderr 吞了；source 时 find_dm.sh 的 stderr 提示 → 进 stderr 不影响。但 Agent **看不到**自己出错时的提示。
+1. `2>/dev/null` 把所有 stderr 吞了；source 时 find_cli.sh 的 stderr 提示 → 进 stderr 不影响。但 Agent **看不到**自己出错时的提示。
 2. `python3 -c json.load(sys.stdin)` 在 stdin 为空时抛 `JSONDecodeError`；Agent **以为 stdout 没东西**。
 3. Agent 于是**单独再调一次** `export status` 验证，浪费一次完整调用。
 
@@ -31,8 +31,8 @@ done
 ### 一行版（首选）
 
 ```bash
-unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" \
-  && "$DM" --token "$API_TOKEN" --gateway <url> export status --task-id <ID> \
+unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_cli.sh" \
+  && "$CLI_BIN" --token "$API_TOKEN" --gateway <url> export status --task-id <ID> \
   | jq '{status, progress, download_url: (.steps[]?.output.download_url // .download_url // empty)}'
 ```
 
@@ -41,10 +41,10 @@ unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" \
 ### 循环版（最多等 10 分钟）
 
 ```bash
-unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" || exit 1
+unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_cli.sh" || exit 1
 TASK_ID=<ID>
 for i in $(seq 1 60); do
-  resp=$("$DM" --token "$API_TOKEN" --gateway <url> export status --task-id "$TASK_ID")
+  resp=$("$CLI_BIN" --token "$API_TOKEN" --gateway <url> export status --task-id "$TASK_ID")
   status=$(echo "$resp" | jq -r '.status // "unknown"')
   echo "poll #$i status=$status"
   case "$status" in
@@ -78,14 +78,14 @@ exit 1
 ````markdown
 ### 任务状态查询：用官方模板，不要自创
 
-DataMind 的所有"创建任务后查状态"流程统一参数 `--task-id`（**不是** `--task` / `--id`）。
+示例平台的所有"创建任务后查状态"流程统一参数 `--task-id`（**不是** `--task` / `--id`）。
 请直接复制下面两段，不要自己写循环。
 
 #### 单次查（首选）
 
 ```bash
-unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" \
-  && "$DM" --token "$API_TOKEN" --gateway <url> export status --task-id <ID>
+unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_cli.sh" \
+  && "$CLI_BIN" --token "$API_TOKEN" --gateway <url> export status --task-id <ID>
 ```
 
 返回 JSON 中：

@@ -35,7 +35,7 @@ skill 顶部用 `<EXTREMELY-IMPORTANT>` 标签 + 大写 / 醒目格式包裹**�
 
 - [ ] 标签在 SKILL.md 顶部，且与 `frontmatter` 之间不夹无关章节
 - [ ] 每条铁律都满足「跨子命令通用 + 违反必出错」两个条件——只影响一个子命令的细枝末节**不该**进铁律
-- [ ] 总条数控制在 **5~7 条**（datamind 实战是 6 条），多于这个数说明你在塞**子命令规则**而非**通用红线**
+- [ ] 总条数控制在 **5~7 条**（example-cli 实战是 6 条），多于这个数说明你在塞**子命令规则**而非**通用红线**
 - [ ] 每条铁律自带「报错指纹」：`命令: xxx` / `报错: yyy` → `修法: zzz`，让 Agent 一眼对号入座
 - [ ] 不写版本号 / build time / 其它易漂移信息（这类信息要么进 VERSION 文件 + `<cli> --version`，要么进具体子命令章节）
 - [ ] **铁律区块的优先级**在 SKILL.md 里要明确写出（"本节优先级高于本 skill 其它任何章节"）
@@ -75,7 +75,7 @@ skill 顶部用 `<EXTREMELY-IMPORTANT>` 标签 + 大写 / 醒目格式包裹**�
 - 这步成功 / 失败的判断标准
 - 失败后跳到哪一步
 
-datamind 的「数据导出」标准 5 步：
+示例平台的「数据导出」标准 5 步：
 
 ```
 1. project list                  → 拿到候选 project_id（已有则跳过）
@@ -124,13 +124,13 @@ datamind 的「数据导出」标准 5 步：
   - 不要在新 Shell 里假设上一条命令的环境变量还在
 - [ ] 用「报错形态」做反向约束的反向锚点：写明"看到 `xxx` 报错 100% 是 yyy 原因"——让 Agent 不再去猜其它原因
 
-### datamind 实战的反向约束样板
+### example-cli 实战的反向约束样板
 
 ```markdown
 🚨 三条防抄红线（违反必 401，无一例外）：
 
 1. 禁止把"含 ... / xxxxxx / … 的样例 token"原样抄进命令
-2. 禁止照抄 find_dm.sh 自动加载提示里出现的"长度 51"等数字
+2. 禁止照抄 find_cli.sh 自动加载提示里出现的"长度 51"等数字
 3. 禁止跨 Shell 调用依赖 $API_TOKEN
 ```
 
@@ -143,16 +143,16 @@ datamind 的「数据导出」标准 5 步：
 任何复杂参数 / 易混淆步骤都配一对 **✅ 正例 + ❌ 反例**，反例后面跟「这样写会发生什么」：
 
 ```bash
-# ✅ 正例：source 与 "$DM" 串在同一条命令里
-unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" \
-  && "$DM" --token "$API_TOKEN" --gateway <url> project list
+# ✅ 正例：source 与 "$CLI_BIN" 串在同一条命令里
+unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_cli.sh" \
+  && "$CLI_BIN" --token "$API_TOKEN" --gateway <url> project list
 
-# ❌ 错例 1：上一条已经 source 过了，下一条直接 $DM ...
-$DM --token "$API_TOKEN" --gateway ... project fields ...
-# → zsh:1: command not found: --token   (新进程里 $DM 为空)
+# ❌ 错例 1：上一条已经 source 过了，下一条直接 $CLI_BIN ...
+$CLI_BIN --token "$API_TOKEN" --gateway ... project fields ...
+# → zsh:1: command not found: --token   (新进程里 $CLI_BIN 为空)
 
 # ❌ 错例 2：没 source 就引用 $API_TOKEN
-"$DM" --token "$API_TOKEN" --gateway ... project list
+"$CLI_BIN" --token "$API_TOKEN" --gateway ... project list
 # → 401 unauthorized   (沙箱里 $API_TOKEN 是空)
 
 # ❌ 错例 3：把含 ... 的占位串当 token

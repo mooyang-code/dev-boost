@@ -69,7 +69,7 @@ Agent 拿到 detail 可以做精确恢复，不用解析 message 字符串。
 
 | 来源 | 处理点 | 函数 |
 |------|--------|------|
-| trpc 错误（HTTP/JSON-RPC 状态码） | client 调用返 `err != nil` | `mapGatewayError(err)` 见 datamind 源码 |
+| trpc 错误（HTTP/JSON-RPC 状态码） | client 调用返 `err != nil` | `mapGatewayError(err)` 见示例 CLI 源码 |
 | 业务码（`rsp.Code != 0`） | `if e := CheckBizCode(...); e != nil { return e }` | `cli_error.go::CheckBizCode` |
 | cobra 解析错误（`required flag` 等） | 不需要业务代码处理 | `ClassifyError` 自动归类 |
 

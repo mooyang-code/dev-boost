@@ -1,30 +1,30 @@
 # 反模式案例库（来自真实 Agent 失败转录）
 
-> 本文档记录 `moo-dm` / `datamind` skill 迭代过程中**真实发生过**的 Agent 翻车 case。每条都给出 **症状 / 根因 / 修复**，方便 review 时按图索骥。
+> 本文档记录 通用 CLI skill 迭代过程中**真实发生过**的 Agent 翻车 case。每条都给出 **症状 / 根因 / 修复**，方便 review 时按图索骥。
 
 ---
 
-## Case 1 — `command not found: --token`（跨 Shell 调用 `$DM` 为空）
+## Case 1 — `command not found: --token`（跨 Shell 调用 `$CLI_BIN` 为空）
 
 ### 症状
 
 ```
-$ $DM --token "$API_TOKEN" --gateway https://api.github.com/repos/mooyang-code/dev-boost project list
+$ $CLI_BIN --token "$API_TOKEN" --gateway https://api.github.com/repos/mooyang-code/dev-boost project list
 zsh:1: command not found: --token
 [Exit code: 127]
 ```
 
 ### 根因
 
-Agent 上一次工具调用里执行了 `source find_dm.sh` 设置了 `$DM`。但当前调用是**新的子进程**——`$DM` 不在新进程的环境里，于是 `$DM` 展开为空，shell 把 `--token` 当成命令。
+Agent 上一次工具调用里执行了 `source find_cli.sh` 设置了 `$CLI_BIN`。但当前调用是**新的子进程**——`$CLI_BIN` 不在新进程的环境里，于是 `$CLI_BIN` 展开为空，shell 把 `--token` 当成命令。
 
 ### 修复
 
-SKILL 里写明：每条 datamind 命令都要带 source 前缀。
+SKILL 里写明：每条 示例 CLI 命令都要带 source 前缀。
 
 ```bash
-unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" \
-  && "$DM" --token "$API_TOKEN" --gateway <url> <subcmd>
+unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_cli.sh" \
+  && "$CLI_BIN" --token "$API_TOKEN" --gateway <url> <subcmd>
 ```
 
 并在 SKILL 顶部"通用模板"区把这个写成模板，让 Agent 直接拷贝。
@@ -40,13 +40,13 @@ unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" \
 ### 症状
 
 ```
-$ "$DM" --token "$API_TOKEN" --gateway <url> project list
+$ "$CLI_BIN" --token "$API_TOKEN" --gateway <url> project list
 {"error":"401 Unauthorized","message":"PAT Token 无效或已过期"}
 ```
 
 ### 根因
 
-`find_dm.sh` 用 `grep -oE 'tai_pat_[A-Za-z0-9_-]{30,}'` 从 `~/.zshrc` 抓 token——**正则缺 `.`**。真实 token 含 `.` 段分隔（例：`tai_pat_xxx.yyy.zzz`，约 110 字符），正则在第一个 `.` 处截断 → 抓出 51 字符的"假 token" → 401。
+`find_cli.sh` 用 `grep -oE 'tai_pat_[A-Za-z0-9_-]{30,}'` 从 `~/.zshrc` 抓 token——**正则缺 `.`**。真实 token 含 `.` 段分隔（例：`tai_pat_xxx.yyy.zzz`，约 110 字符），正则在第一个 `.` 处截断 → 抓出 51 字符的"假 token" → 401。
 
 ### 修复
 
@@ -66,27 +66,27 @@ fi
 
 ---
 
-## Case 3 — `❌ 找不到二进制：~/.box/Workspace/moo-dm-darwin-arm64`
+## Case 3 — `❌ 找不到二进制：~/.box/Workspace/<cli>-darwin-arm64`
 
 ### 症状
 
 Agent 复制 SKILL 里给的命令：
 
 ```
-$ source "/Users/mooyang/Library/Application Support/Box/engine/skills/user/datamind/find_dm.sh" && $DM project list --output json
-❌ 找不到二进制: /Users/mooyang/.box/Workspace/moo-dm-darwin-arm64
+$ source "/Users/mooyang/Library/Application Support/Box/engine/skills/user/example-cli/find_cli.sh" && $CLI_BIN project list --output json
+❌ 找不到二进制: /Users/mooyang/.box/Workspace/<cli>-darwin-arm64
 ```
 
 ### 根因
 
 SKILL 里写死了某个 Agent 产品（Box）的路径 `~/.box/Workspace`。Agent 在不同产品（Workbuddy / Box / Cursor）下安装目录完全不同，写死 → 全错。
 
-另外 `find_dm.sh` 依赖 `${BASH_SOURCE[0]}` 解析自身路径，但 zsh 下行为略不同，需要兼容性处理。
+另外 `find_cli.sh` 依赖 `${BASH_SOURCE[0]}` 解析自身路径，但 zsh 下行为略不同，需要兼容性处理。
 
 ### 修复
 
 1. SKILL 里所有路径用 `<SKILL_DIR>` 占位，并说明"由你的 Agent 平台告知"。
-2. `find_dm.sh` 自身：
+2. `find_cli.sh` 自身：
 
 ```bash
 # 兼容 zsh / bash 的脚本自路径
@@ -98,9 +98,9 @@ export SKILL_DIR
 3. 给二进制做权限自动修复：
 
 ```bash
-[ -x "$DM" ] || chmod +x "$DM" 2>/dev/null
+[ -x "$CLI_BIN" ] || chmod +x "$CLI_BIN" 2>/dev/null
 # macOS quarantine
-command -v xattr >/dev/null 2>&1 && xattr -d com.apple.quarantine "$DM" 2>/dev/null || true
+command -v xattr >/dev/null 2>&1 && xattr -d com.apple.quarantine "$CLI_BIN" 2>/dev/null || true
 ```
 
 ### 关联 checklist
@@ -116,13 +116,13 @@ command -v xattr >/dev/null 2>&1 && xattr -d com.apple.quarantine "$DM" 2>/dev/n
 Agent 自行猜测：
 
 ```
-$ "$DM" export status --task EXPxxx
+$ "$CLI_BIN" export status --task EXPxxx
 Error: unknown flag: --task
 
-$ "$DM" export status --id EXPxxx
+$ "$CLI_BIN" export status --id EXPxxx
 Error: unknown flag: --id
 
-$ "$DM" export status --help | head
+$ "$CLI_BIN" export status --help | head
 ... 翻 help 才发现是 --task-id
 ```
 
@@ -136,7 +136,7 @@ SKILL 文档里轮询模板用的是 `--task-id`，但其它示例参差混入�
 2. 用 `<cli> schema --all` 与文档做 diff：
 
 ```bash
-"$DM" schema --all | jq -r '..|.flags?//empty|.[]|.name' | sort -u > /tmp/real-flags.txt
+"$CLI_BIN" schema --all | jq -r '..|.flags?//empty|.[]|.name' | sort -u > /tmp/real-flags.txt
 rg -oE '\-\-[a-z][a-z0-9-]+' SKILL.md references/ | sed -E 's/.*(--[a-z][a-z0-9-]+).*/\1/' | sort -u > /tmp/doc-flags.txt
 comm -23 /tmp/doc-flags.txt /tmp/real-flags.txt   # 应为空
 ```
@@ -155,7 +155,7 @@ Agent 写了循环：
 
 ```bash
 for i in 1..12; do
-  resp=$("$DM" export status --task-id EXPxxx 2>/dev/null)
+  resp=$("$CLI_BIN" export status --task-id EXPxxx 2>/dev/null)
   echo "$resp" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status'))"
   ...
 done
@@ -168,7 +168,7 @@ done
 ### 根因
 
 1. python `json.load(sys.stdin)` 在 stdin 为空时抛 `JSONDecodeError`，print 也跟着失败 → Agent 看不到任何输出 → 误以为 stdout 没东西。
-2. 真实情况：`2>/dev/null` 没影响 stdout；只是 source 时 `find_dm.sh` 输出了 token mask 提示进 stderr 被吞了。
+2. 真实情况：`2>/dev/null` 没影响 stdout；只是 source 时 `find_cli.sh` 输出了 token mask 提示进 stderr 被吞了。
 
 ### 修复
 
@@ -178,10 +178,10 @@ SKILL 给**官方循环模板**，明确：
 - 已经看到 `completed`，**禁止再单独查一次**
 
 ```bash
-unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" || exit 1
+unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_cli.sh" || exit 1
 TASK_ID=<ID>
 for i in $(seq 1 60); do
-  resp=$("$DM" --token "$API_TOKEN" --gateway <url> export status --task-id "$TASK_ID")
+  resp=$("$CLI_BIN" --token "$API_TOKEN" --gateway <url> export status --task-id "$TASK_ID")
   status=$(echo "$resp" | jq -r '.status // "unknown"')
   echo "poll #$i status=$status"
   case "$status" in
@@ -204,13 +204,13 @@ exit 1
 ### 症状
 
 ```
-$ "$DM" export download --task-id EXPxxx
-Error: unknown command "download" for "moo-dm export"
+$ "$CLI_BIN" export download --task-id EXPxxx
+Error: unknown command "download" for "<cli> export"
 ```
 
 ### 根因
 
-Agent 习惯"任务完成 → 单独取下载链接"两步走。但 datamind 的设计是：`export status` 输出里**已经包含** `steps[].output.download_url`，不需要单独 download 命令。
+Agent 习惯"任务完成 → 单独取下载链接"两步走。但 示例平台的设计是：`export status` 输出里**已经包含** `steps[].output.download_url`，不需要单独 download 命令。
 
 ### 修复
 
@@ -218,7 +218,7 @@ SKILL 红线：「`export status` 已自带下载链接，禁止再调 `export d
 官方模板里直接抽取：
 
 ```bash
-"$DM" ... export status --task-id <ID> \
+"$CLI_BIN" ... export status --task-id <ID> \
   | jq '{status, download_url: (.steps[]?.output.download_url // .download_url // empty)}'
 ```
 
@@ -233,7 +233,7 @@ SKILL 红线：「`export status` 已自带下载链接，禁止再调 `export d
 ### 症状
 
 ```
-$ "$DM" export create ... --filter '{"logic":"and","groups":[{"conditions":[{"field":"title","op":"like","value":"庆余年"}]}]}'
+$ "$CLI_BIN" export create ... --filter '{"logic":"and","groups":[{"conditions":[{"field":"title","op":"like","value":"庆余年"}]}]}'
 Error: unsupported op: like
 ```
 
@@ -265,7 +265,7 @@ SKILL 加铁律：拼 `--filter` 前必须先 `schema export create`。
 ### 症状
 
 ```
-$ "$DM" export estimate ... --filter '{"logic":"and","groups":[{"conditions":[{"field":"status","op":"eq","value":"published"}]}]}'
+$ "$CLI_BIN" export estimate ... --filter '{"logic":"and","groups":[{"conditions":[{"field":"status","op":"eq","value":"published"}]}]}'
 {"estimate":0}
 ```
 
@@ -298,7 +298,7 @@ CLI 不报错（`value:"published"` 类型合法），但**永远 0 条**。
 ### 症状
 
 ```
-$ "$DM" project list --output json
+$ "$CLI_BIN" project list --output json
 Error: unknown flag: --output
 ```
 
@@ -324,34 +324,34 @@ rg -lE '\-\-output\s+(json|table|csv)' skills/<skill>/ | xargs sed -i '' -E 's/ 
 
 ---
 
-## Case 10 — `permission denied: moo-dm-darwin-arm64`
+## Case 10 — `permission denied: <cli>-darwin-arm64`
 
 ### 症状
 
 ```
-$ "$DM" --help
-zsh:1: permission denied: /path/to/moo-dm-darwin-arm64
+$ "$CLI_BIN" --help
+zsh:1: permission denied: /path/to/<cli>-darwin-arm64
 [Exit code: 126]
 ```
 
 ### 根因
 
-zip 解压后二进制丢失 +x 权限；macOS 还会加 `com.apple.quarantine` xattr 阻止运行。早期 `find_dm.sh` 对此**无声失败**。
+zip 解压后二进制丢失 +x 权限；macOS 还会加 `com.apple.quarantine` xattr 阻止运行。早期 `find_cli.sh` 对此**无声失败**。
 
 ### 修复
 
-`find_dm.sh` 在定位完二进制后：
+`find_cli.sh` 在定位完二进制后：
 
 ```bash
-[ -x "$DM" ] || chmod +x "$DM" 2>/dev/null
+[ -x "$CLI_BIN" ] || chmod +x "$CLI_BIN" 2>/dev/null
 
 # macOS：去 quarantine
 if [ "$(uname -s)" = "Darwin" ] && command -v xattr >/dev/null 2>&1; then
-  xattr -d com.apple.quarantine "$DM" 2>/dev/null || true
+  xattr -d com.apple.quarantine "$CLI_BIN" 2>/dev/null || true
 fi
 
-# 顺手给同目录下其它 moo-dm-* 都加 +x
-chmod +x "$(dirname "$DM")"/moo-dm-* 2>/dev/null || true
+# 顺手给同目录下其它 <cli>-* 都加 +x
+chmod +x "$(dirname "$CLI_BIN")"/<cli>-* 2>/dev/null || true
 ```
 
 ### 关联 checklist
@@ -360,7 +360,7 @@ chmod +x "$(dirname "$DM")"/moo-dm-* 2>/dev/null || true
 
 ---
 
-## Case 11 — 子技能直接触发后裸跑 `moo-dm`
+## Case 11 — 子技能直接触发后裸跑 `<cli>`
 
 ### 症状
 
@@ -370,30 +370,30 @@ chmod +x "$(dirname "$DM")"/moo-dm-* 2>/dev/null || true
 导出迪丽热巴主演的电视剧
 ```
 
-Agent 正确触发了 `datamind-export` 子技能，但随后执行：
+Agent 正确触发了 `export subskill` 子技能，但随后执行：
 
 ```bash
-moo-dm project list
-moo-dm project fields --type 电视剧
-which moo-dm || echo "moo-dm not found in PATH"
+<cli> project list
+<cli> project fields --type 电视剧
+which <cli> || echo "<cli> not found in PATH"
 ```
 
 最终错误结论：
 
 ```text
-DataMind CLI (moo-dm) 还没有安装或配置。
+示例 CLI (<cli>) 还没有安装或配置。
 ```
 
 ### 根因
 
-平台可能会索引所有 `SKILL.md`，包括 `subskills/export/SKILL.md`。当子技能被直接加载时，Agent 不一定读过主 `datamind/SKILL.md`，也就看不到主文档里的：
+平台可能会索引所有 `SKILL.md`，包括 `subskills/export/SKILL.md`。当子技能被直接加载时，Agent 不一定读过主 `example-cli/SKILL.md`，也就看不到主文档里的：
 
-- `source "<SKILL_DIR>/find_dm.sh"` 前缀
-- `<SKILL_DIR>` 是安装后的 `datamind/` 根目录
+- `source "<SKILL_DIR>/find_cli.sh"` 前缀
+- `<SKILL_DIR>` 是安装后的 `example-cli/` 根目录
 - CLI 二进制不要求在 `PATH` 中
-- 禁止用 `which moo-dm` 判断是否安装
+- 禁止用 `which <cli>` 判断是否安装
 
-子技能如果只写“先查字段，再导出”的业务流程，Agent 会凭命令名裸跑 `moo-dm`，然后把 PATH 中找不到误判成未安装。
+子技能如果只写“先查字段，再导出”的业务流程，Agent 会凭命令名裸跑 `<cli>`，然后把 PATH 中找不到误判成未安装。
 
 ### 修复
 
@@ -405,14 +405,14 @@ DataMind CLI (moo-dm) 还没有安装或配置。
 本子技能可能被 Agent 直接触发，而不会先读取 `../../SKILL.md`。因此执行任何命令前必须先完成 CLI 自举：
 
 ```bash
-unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" \
-  && "$DM" --token "$API_TOKEN" --gateway <gateway-url> <subcommand> [args...]
+unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_cli.sh" \
+  && "$CLI_BIN" --token "$API_TOKEN" --gateway <gateway-url> <subcommand> [args...]
 ```
 
-- `<SKILL_DIR>` 必须是用户安装后的 skill 根目录，里面有 `SKILL.md`、`find_dm.sh`、`moo-dm-*`；不是 `subskills/<name>/`，也不是仓库源码目录。
+- `<SKILL_DIR>` 必须是用户安装后的 skill 根目录，里面有 `SKILL.md`、`find_cli.sh`、`<cli>-*`；不是 `subskills/<name>/`，也不是仓库源码目录。
 - 如果只知道当前子技能文件路径，`<SKILL_DIR>` 取当前目录向上两级（`subskills/<name>/../..`）。
-- 禁止直接执行 `moo-dm ...`；CLI 不要求在 `PATH` 中。
-- 禁止用 `which moo-dm` 判断未安装；应检查是否正确 `source "<SKILL_DIR>/find_dm.sh"`。
+- 禁止直接执行 `<cli> ...`；CLI 不要求在 `PATH` 中。
+- 禁止用 `which <cli>` 判断未安装；应检查是否正确 `source "<SKILL_DIR>/find_cli.sh"`。
 ````
 
 ### 关联 checklist

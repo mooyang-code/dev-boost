@@ -153,7 +153,7 @@ func init() {
 }
 ```
 
-`registerIdempotencyFlags` 完整实现见 datamind 的 `cmd/cli/idempotency.go`，约 260 行。
+`registerIdempotencyFlags` 完整实现见 示例平台的 `cmd/cli/idempotency.go`，约 260 行。
 关键代码片段已在 SKILL.md §3.5 / §3.6 给出。
 
 ## 推荐 Agent 调用模式

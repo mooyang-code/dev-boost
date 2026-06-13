@@ -15,7 +15,7 @@ Agent 决策的核心信息源就是这三件套（stdout / stderr / exit）。�
 实际踩坑：
 
 - CLI 删了 `--output table`、固定 JSON 后没在 SKILL 显式写「stdout 永远 JSON」→ Agent 仍主动加 `--output json`，遇到 `unknown flag` 又重试。
-- find_dm.sh 自动 source 加载 token 时把提示写 stderr，Agent 用 `2>/dev/null` 吞掉所有 stderr，于是出错时**完全不知道**为什么。
+- find_cli.sh 自动 source 加载 token 时把提示写 stderr，Agent 用 `2>/dev/null` 吞掉所有 stderr，于是出错时**完全不知道**为什么。
 
 ## 检查项
 
@@ -48,7 +48,7 @@ Agent 决策的核心信息源就是这三件套（stdout / stderr / exit）。�
 
 ```bash
 # 任意一条只读命令的 stdout 必须能直接 jq
-unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" \
-  && "$DM" --token "$API_TOKEN" --gateway <url> <list-cmd> | jq -e . >/dev/null \
+unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_cli.sh" \
+  && "$CLI_BIN" --token "$API_TOKEN" --gateway <url> <list-cmd> | jq -e . >/dev/null \
   && echo "stdout=clean JSON OK" || echo "❌ stdout 被污染"
 ```

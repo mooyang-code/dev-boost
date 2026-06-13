@@ -37,9 +37,9 @@ CLI 端实现（参考 `cmd/cli/schema.go`）：
 
 ```go
 const (
-    AnnotationEnum       = "moo.dm/enum"
-    AnnotationJSONSchema = "moo.dm/json_schema"
-    AnnotationRemarks    = "moo.dm/remarks"
+    AnnotationEnum       = "example.cli/enum"
+    AnnotationJSONSchema = "example.cli/json_schema"
+    AnnotationRemarks    = "example.cli/remarks"
 )
 
 func RegisterFlagJSONSchema(cmd *cobra.Command, name, schema string) {
@@ -77,7 +77,7 @@ func init() {
 ## 一行命令验证
 
 ```bash
-"$DM" schema export create | jq '
+"$CLI_BIN" schema export create | jq '
   .commands[0].flags
   | map(select(.name=="filter"))
   | .[0]
@@ -93,8 +93,8 @@ func init() {
 ### 📋 拼 --filter / 不确定任何 flag 含义前必须先 schema
 
 ```bash
-unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" \
-  && "$DM" --token "$API_TOKEN" --gateway <url> schema export create \
+unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_cli.sh" \
+  && "$CLI_BIN" --token "$API_TOKEN" --gateway <url> schema export create \
   | jq '.commands[0].flags[] | select(.name=="filter") | {usage, enum, json_schema, remarks}'
 ```
 

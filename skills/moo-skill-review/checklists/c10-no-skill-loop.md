@@ -7,9 +7,9 @@
 ```
 用户: "生成运营看板"
   → 加载 moo-dashboard
-  → 文档写"完成后调用 datamind 导出"
-  → Agent 加载 moo-datamind
-  → datamind description 含「数据看板」
+  → 文档写"完成后调用 example-cli 导出"
+  → Agent 加载 moo-example-cli
+  → 示例业务平台 description 含「数据看板」
   → Agent 又加载 moo-dashboard
   → 反复 ...
 ```
@@ -75,7 +75,7 @@
 `description` 里：
 
 - 业务领域相邻的 skill 之间用「**不要触发**」段落点名澄清
-- 关键词加**修饰词**让范围收窄，例如把"数据看板"改成"看板模板设计/前端样式"或"`moo-dm dashboard` 子命令的 CLI 调用"
+- 关键词加**修饰词**让范围收窄，例如把"数据看板"改成"看板模板设计/前端样式"或"`<cli> dashboard` 子命令的 CLI 调用"
 - 同义词不要同时出现在多个 skill 的 description 里
 
 具体写法见 [reference/description-and-negative-cases.md](../reference/description-and-negative-cases.md)。
@@ -165,7 +165,7 @@ skill 末尾的"后续衔接"段落用**陈述句 + 用户主导**写法，不�
 ### 反例 2：触发词强重叠且无负样本
 
 ```yaml
-# moo-datamind/SKILL.md
+# moo-example-cli/SKILL.md
 description: 数据导出、数据看板、数据清洗
 
 # moo-dashboard/SKILL.md
@@ -177,29 +177,29 @@ description: 数据看板创建、看板模板设计
 修复：
 
 ```yaml
-# moo-datamind
+# moo-example-cli
 description: |
-  ... 含"看板"（仅指 moo-dm dashboard 子命令的 CLI 调用）...
+  ... 含"看板"（仅指 <cli> dashboard 子命令的 CLI 调用）...
   不要触发：「看板模板设计 / 前端样式 / 看板交互」 → 应触发 moo-dashboard。
 
 # moo-dashboard
 description: |
   ... 看板模板设计、前端样式、看板交互 ...
-  不要触发：「调用 moo-dm dashboard 子命令」 → 应触发 moo-datamind。
+  不要触发：「调用 <cli> dashboard 子命令」 → 应触发 moo-example-cli。
 ```
 
 ### 反例 3：误把用户主导的多轮交互判成环路
 
 ```
 用户: "帮我列下所有项目"
-Agent: [加载 datamind, 执行 project list, 输出列表]
+Agent: [加载 example-cli, 执行 project list, 输出列表]
 用户: "好，再帮我导出 saas_xxx 项目的 type=2 的数据"
-Agent: [加载 datamind, 执行 export create, 输出 task_id]
+Agent: [加载 example-cli, 执行 export create, 输出 task_id]
 用户: "完成后下载链接发我"
-Agent: [datamind 已加载, 查询 status, 输出链接]
+Agent: [example-cli 已加载, 查询 status, 输出链接]
 ```
 
-→ 这里 datamind 被"加载"3 次，但**每次用户都给了新指令**，是正常多轮业务流，**不应**触发防护。错误的防护会让 Agent 半路停下来，反而比环路更糟。
+→ 这里 example-cli 被"加载"3 次，但**每次用户都给了新指令**，是正常多轮业务流，**不应**触发防护。错误的防护会让 Agent 半路停下来，反而比环路更糟。
 
 ---
 

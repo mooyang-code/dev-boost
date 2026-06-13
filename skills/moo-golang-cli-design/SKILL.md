@@ -5,7 +5,7 @@ description: 媒资组 Go CLI 设计规范，面向 AI Agent / CI / 人工三类
 
 # 媒资 Go CLI 设计规范
 
-面向 **AI Agent 优先** 的 CLI 设计指南。基于 `moo-dm`（datamind）改造经验沉淀，已在生产 Agent 流程跑通。
+面向 **AI Agent 优先** 的 CLI 设计指南。基于通用 CLI 改造经验沉淀，已在生产 Agent 流程跑通。
 
 > **核心理念**：CLI 是契约。Agent 不会读你的 README，它只会观察 stdout / stderr / exit code。三者中任何一个不稳定，整条 Agent 流水线就会反复猜测、重复下单、错误退避。
 
@@ -256,7 +256,7 @@ CLIError 类型选择参考 [reference/error-types.md](reference/error-types.md)
 
 实现要点：
 - 不调任何 RPC，全部从 cobra 内存元数据生成
-- 通过自定义 annotation `moo.dm/enum` 标注枚举值（`RegisterEnum(cmd, "mode", "udf", "builtin")`），Agent 直接拿到合法值
+- 通过自定义 annotation `example.cli/enum` 标注枚举值（`RegisterEnum(cmd, "mode", "udf", "builtin")`），Agent 直接拿到合法值
 - 输出含 `exit_codes` / `error_types` / `stderr_format` / `stdout_format` 元信息
 
 完整实现细节 + 可拷代码见 [reference/schema-introspection.md](reference/schema-introspection.md)。

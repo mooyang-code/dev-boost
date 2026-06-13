@@ -4,7 +4,7 @@
 
 skill 不是越长越好——上下文越长，Agent 越容易**找不到关键信息**。一个合格的 skill 文档架构应满足：
 
-1. **SKILL.md 精简**：核心指令 + 场景索引，控制在 **200~300 行**（datamind 实战 ~600 行偏长，但因为铁律 + 完整工作流模板需要集中展示，可接受；常规 skill 控制在 200 行内）
+1. **SKILL.md 精简**：核心指令 + 场景索引，控制在 **200~300 行**（example-cli 实战 ~600 行偏长，但因为铁律 + 完整工作流模板需要集中展示，可接受；常规 skill 控制在 200 行内）
 2. **references/ 拆分**：详细参数 / 操作流程 / 场景案例拆到子文件，Agent 按需读取
 3. **场景→文件索引**：SKILL.md 末尾给一张「我想做什么 → 读哪个 reference 文件」的映射表
 4. **嵌套子技能可自举**：如果使用 `subskills/**/SKILL.md` 做模块拆分，每个子技能都必须能在未读取主 skill 时独立启动
@@ -69,7 +69,7 @@ skills/<skill-name>/
 ### subskills/ 层（如果存在）
 
 - [ ] 每个 `subskills/**/SKILL.md` 文首都有“直接加载保护”：说明本子技能可能未先读取主 `SKILL.md`
-- [ ] 每个子技能都内联 CLI 自举模板：`unset SKILL_DIR DM && source "<SKILL_DIR>/find_<cli>.sh" && "$DM" ...`
+- [ ] 每个子技能都内联 CLI 自举模板：`unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_<cli>.sh" && "$CLI_BIN" ...`
 - [ ] 子技能明确 `<SKILL_DIR>` 是安装后的 skill 根目录，不是当前 `subskills/<name>/` 目录；必要时说明“从当前子技能目录向上两级”
 - [ ] 子技能禁止裸跑 `<cli> ...`，也禁止用 `which <cli>` 判断未安装
 - [ ] 子技能可引用公共 `references/`，但不能把“找到 CLI / 配置 token / 命令前缀”等启动前置只放在主 skill 或 reference 里
@@ -130,19 +130,19 @@ references/
 ### 反例 4 — 子技能只写业务流程，启动前置全靠主 skill
 
 ```text
-skills/datamind/
-├── SKILL.md                       # 有 find_dm.sh / token / source 规则
-├── find_dm.sh
+skills/example-cli/
+├── SKILL.md                       # 有 find_cli.sh / token / source 规则
+├── find_cli.sh
 └── subskills/
     └── export/SKILL.md            # 只写“先 project fields，再 export create”
 ```
 
-真实结果：Agent 直接触发 `datamind-export`，没有读主 `datamind/SKILL.md`，于是执行 `moo-dm project list`，再用 `which moo-dm` 误判 CLI 未安装。
+真实结果：Agent 直接触发 `export subskill`，没有读主 `example-cli/SKILL.md`，于是执行 `<cli> project list`，再用 `which <cli>` 误判 CLI 未安装。
 
 修复：每个子技能开头加“直接加载保护”，明确：
 
 - 本子技能可能被直接触发，不保证主 skill 已读
-- 每条命令必须 `source "<SKILL_DIR>/find_<cli>.sh" && "$DM" ...`
+- 每条命令必须 `source "<SKILL_DIR>/find_<cli>.sh" && "$CLI_BIN" ...`
 - `<SKILL_DIR>` 是安装后的 skill 根目录；若从子技能目录定位，向上两级
 - 禁止裸跑 `<cli>`，禁止用 `which <cli>` 判安装
 
@@ -174,11 +174,11 @@ Agent：请确认导出意图...
 
 ## 范本
 
-参考 datamind/SKILL.md（datamind 仓库）的：
+参考 example-cli/SKILL.md（example-cli 仓库）的：
 
 - frontmatter 写法（触发例句 + 负样本明确）
 - `<EXTREMELY-IMPORTANT>` 6 条铁律的组织方式
 - 末尾「场景→文件索引」表（共 14 行索引）
 - 把高危流程（动态看板创建）单独放在 SKILL.md 里强约束、其它放 references/
 
-完整正面教材拆解见 [reference/datamind-best-practices.md](../reference/datamind-best-practices.md)。
+完整正面教材拆解见 [reference/cli-best-practices.md](../reference/cli-best-practices.md)。

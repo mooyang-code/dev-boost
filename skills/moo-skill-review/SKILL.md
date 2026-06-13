@@ -19,7 +19,7 @@ description: 媒资组 AI Skill 审查规范（review skill）。用于对团队
 - 用户**显式**说"切到 X skill / 用 X skill 做"——用户主动切换永远放行
 </MOO-SKILL-REENTRY-GUARD>
 
-面向团队 **生产级 AI Agent skill** 的 review 指南。沉淀自 `moo-dm` / `datamind` skill 多轮真实迭代——所有规则都对应**实际踩过的 Agent 失败 case**，不是空想。
+面向团队 **生产级 AI Agent skill** 的 review 指南。沉淀自 通用 CLI skill 多轮真实迭代——所有规则都对应**实际踩过的 Agent 失败 case**，不是空想。
 
 > **一句话核心**：Agent 不读你的"补充说明"，它只观察 **stdout / stderr / exit code / 文档里的可粘贴片段**。skill 里任何一处与 CLI 真实行为漂移、任何一处需要 Agent "推理"才能正确执行的地方，都会变成线上的反复试错。
 
@@ -37,7 +37,7 @@ description: 媒资组 AI Skill 审查规范（review skill）。用于对团队
 | 4 | **顶部铁律 `<EXTREMELY-IMPORTANT>` 5~7 条** | 跨子命令通用、违反必出错、明确"本节优先级最高" | [c8](./checklists/c8-strict-flow.md) |
 | 5 | **高频流程必须给固定步骤 + 可粘贴模板** | 不要让 Agent 每次重新规划；步骤多就拆 step 脚本 | [c8](./checklists/c8-strict-flow.md) |
 | 6 | **同时写「不能做什么」反向约束** | 正向 + 反向双约束才能封死发散；明确刚性 vs 柔性 | [c8](./checklists/c8-strict-flow.md) |
-| 7 | **每条命令都要带 source 前缀（跨 Shell 不持久）** | Agent 工具每次 Shell 都是新进程，`$DM` 不会跨调用存活 | [c2](./checklists/c2-cli-contract.md) |
+| 7 | **每条命令都要带 source 前缀（跨 Shell 不持久）** | Agent 工具每次 Shell 都是新进程，`$CLI_BIN` 不会跨调用存活 | [c2](./checklists/c2-cli-contract.md) |
 | 8 | **token 不放占位串、不依赖沙箱 env** | `<api-token>` 占位串 Agent 真的会原样发 → 401 | [c3](./checklists/c3-token.md) |
 | 9 | **任务/状态查询统一 `--task-id`，禁止猜参数名** | `--task` / `--id` / `--taskid` 都是 Agent 的常规 3 连试错 | [c2](./checklists/c2-cli-contract.md) / [c4](./checklists/c4-polling.md) |
 | 10 | **轮询给官方模板 + 反模式列表** | 禁止自创 for + python json.load 的轮询 | [c4](./checklists/c4-polling.md) |
@@ -85,7 +85,7 @@ description: 媒资组 AI Skill 审查规范（review skill）。用于对团队
 ### Step 2 — 把 SKILL.md 里所有可粘贴的命令片段抠出来核对（10 分钟）
 
 ```bash
-rg -nE '^\s*(\$DM|"\$DM"|moo-[a-z-]+)\b' \
+rg -nE '^\s*(\$CLI_BIN|"\$CLI_BIN"|moo-[a-z-]+)\b' \
   skills/<your-skill>/SKILL.md \
   skills/<your-skill>/references/ \
   skills/<your-skill>/subskills/
@@ -95,14 +95,14 @@ rg -nE '^\s*(\$DM|"\$DM"|moo-[a-z-]+)\b' \
 
 - 路径里有没有 `~/.box` / `~/.workbuddy` / `~/Library/Application Support/Box` 这类**特定 Agent 产品**目录？→ 应改为 `<SKILL_DIR>` 占位。
 - token 写法是 `--token "$API_TOKEN"` 还是 `--token <api-token>` 占位串？→ 占位串绝对禁止（见 §c3）。
-- 命令是否完整带 `unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" && "$DM" --token ... --gateway <url> <子命令>` 前缀？→ 跨 Shell 调用是新进程，**每条**都要带。
-- 子技能里是否出现裸 `moo-dm ...` / `<cli> ...` 或 `which <cli>`？→ 命中即必改：CLI 不要求在 PATH 中，应通过安装目录下的定位脚本自举。
+- 命令是否完整带 `unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_cli.sh" && "$CLI_BIN" --token ... --gateway <url> <子命令>` 前缀？→ 跨 Shell 调用是新进程，**每条**都要带。
+- 子技能里是否出现裸 `<cli> ...` / `<cli> ...` 或 `which <cli>`？→ 命中即必改：CLI 不要求在 PATH 中，应通过安装目录下的定位脚本自举。
 - 命令尾部有没有过期 flag（如 `--output json` / `--output table`）？→ 跑 `<cli> --help` 实测一遍。
 
 ### Step 3 — 用 schema 自省比对参数名（5 分钟）
 
 ```bash
-"$DM" schema --all 2>/dev/null | jq -r '..|.flags?//empty|.[]|.name' | sort -u > /tmp/real-flags.txt
+"$CLI_BIN" schema --all 2>/dev/null | jq -r '..|.flags?//empty|.[]|.name' | sort -u > /tmp/real-flags.txt
 rg -oE '\-\-[a-z][a-z0-9-]+' skills/<your-skill>/SKILL.md | sort -u > /tmp/doc-flags.txt
 diff /tmp/real-flags.txt /tmp/doc-flags.txt | head -50
 ```
@@ -114,14 +114,14 @@ diff /tmp/real-flags.txt /tmp/doc-flags.txt | head -50
 把改完的 SKILL.md / references / 二进制**同步到 Agent 安装目录**，然后顺序跑：
 
 ```bash
-# 1. find_dm.sh 自定位 + token 自动加载
-unset SKILL_DIR DM && source "<安装目录>/find_dm.sh" && "$DM" --help >/dev/null && echo OK
+# 1. find_cli.sh 自定位 + token 自动加载
+unset SKILL_DIR CLI_BIN && source "<安装目录>/find_cli.sh" && "$CLI_BIN" --help >/dev/null && echo OK
 
 # 2. 一条只读命令（<your-cli> 列资源）
-"$DM" --token "$API_TOKEN" --gateway <url> <list-command>
+"$CLI_BIN" --token "$API_TOKEN" --gateway <url> <list-command>
 
 # 3. 故意拼错参数，看错误信息是否清晰（exit=2 + suggestion）
-"$DM" <subcmd> --task <fake-id> 2>&1 ; echo "exit=$?"
+"$CLI_BIN" <subcmd> --task <fake-id> 2>&1 ; echo "exit=$?"
 ```
 
 ### Step 5 — 复杂参数 schema 抽查（3 分钟）
@@ -129,7 +129,7 @@ unset SKILL_DIR DM && source "<安装目录>/find_dm.sh" && "$DM" --help >/dev/n
 任何接 JSON / DSL / 多枚举值的 flag（`--filter` / `--rules` / `--config` 等）：
 
 ```bash
-"$DM" schema <subcmd> | jq '.commands[0].flags[] | select(.name=="<flag>") | {has_enum:(.enum|length>0), has_schema:(.json_schema|length>0), has_remarks:(.remarks|length>0)}'
+"$CLI_BIN" schema <subcmd> | jq '.commands[0].flags[] | select(.name=="<flag>") | {has_enum:(.enum|length>0), has_schema:(.json_schema|length>0), has_remarks:(.remarks|length>0)}'
 ```
 
 至少满足 `has_schema: true` 或 `has_remarks: true` 之一；含枚举值的 flag 必须 `has_enum: true`。否则评估添加 `RegisterFlagJSONSchema` / `RegisterFlagRemarks` / `RegisterEnum`（参见 [c6-schema-introspection.md](./checklists/c6-schema-introspection.md)）。
@@ -174,7 +174,7 @@ echo "lines=$total negative_marks=$neg ratio=1/$((total / (neg + 1)))"
 
 | # | 反模式 | 典型现象 | 正解 |
 |---|-------|---------|------|
-| 1 | **跨 Shell 调用复用 `$DM` / `$TOKEN`** | Agent 第二条命令报 `command not found: --token` | SKILL 里写明：每条命令都要带 `source ... &&` 前缀 |
+| 1 | **跨 Shell 调用复用 `$CLI_BIN` / `$TOKEN`** | Agent 第二条命令报 `command not found: --token` | SKILL 里写明：每条命令都要带 `source ... &&` 前缀 |
 | 2 | **占位串当 token** | `--token "<api-token>"` / `--token "$TOKEN"` 在没 source 的命令里 → 401 | token 必须是真实 ~110 字符全串；含 `.` 段；用 `$API_TOKEN` 时**必须**与 `source` 同一条命令 |
 | 3 | **猜参数名** | `--task` / `--id` / `--taskid` / `-t` 全都试一遍 | SKILL 里加铁律「全 CLI 任务相关一律 `--task-id`」+ 列出涉及子命令清单 |
 | 4 | **stdout 被 `2>/dev/null` 误判为空** | Agent 拿到完整 JSON 却以为没拿到，再多查一次 | SKILL 里点明「业务结果**永远在 stdout**；空 = 命令报错（看 exit code 或 `2>&1`）」 |
@@ -188,15 +188,15 @@ echo "lines=$total negative_marks=$neg ratio=1/$((total / (neg + 1)))"
 | 12 | **写完不实跑回归** | 文档里改了，安装目录里没同步；下次 Agent 还是踩老坑 | 每次改 skill 必跑 §Step 4 三件套，并把回归命令写进 README |
 | 13 | **description 里写工作流** | "先调用 X，然后 Y，最后 Z…" → Agent 决策权被抢走，反而僵化 | description **只写触发条件**，工作流放铁律 + references |
 | 14 | **负样本只写"明显无关"** | 「帮我订咖啡」这种没价值；近似 case 才有用 | 列「pandas 做清洗」「file 查 trace」「Python 直连 MySQL」等近似但不该触发的场景 |
-| 15 | **Skill 之间触发词重叠 + 衔接祈使句 → 环式调用** | `dashboard` 文档说"调用 datamind 导出"，`datamind` description 又含「数据看板」字样 → 大模型在没有用户新指令的情况下在两者之间随机选一个，A→B→A→B 反复加载 | 顶部加 `<MOO-SKILL-REENTRY-GUARD>`（A↔B 短窗口交替 ≥ 2 次 **且** 无新用户指令 → 停止跳转）+ 衔接段落改用户主导陈述句 + 触发词去重叠（关键词加修饰词、加「不要触发」段落） |
-| 16 | **嵌套子技能依赖主 skill 前置说明** | Agent 直接触发 `datamind-export`，裸跑 `moo-dm project list`，再用 `which moo-dm` 误判未安装 | 每个 `subskills/**/SKILL.md` 都加“直接加载保护”：说明可能未读主 skill；每条命令必须 `source "<SKILL_DIR>/find_dm.sh" && "$DM" ...`；禁止 `which <cli>` 判安装 |
+| 15 | **Skill 之间触发词重叠 + 衔接祈使句 → 环式调用** | `dashboard` 文档说"调用 example-cli 导出"，`example-cli` description 又含「数据看板」字样 → 大模型在没有用户新指令的情况下在两者之间随机选一个，A→B→A→B 反复加载 | 顶部加 `<MOO-SKILL-REENTRY-GUARD>`（A↔B 短窗口交替 ≥ 2 次 **且** 无新用户指令 → 停止跳转）+ 衔接段落改用户主导陈述句 + 触发词去重叠（关键词加修饰词、加「不要触发」段落） |
+| 16 | **嵌套子技能依赖主 skill 前置说明** | Agent 直接触发 `export subskill`，裸跑 `<cli> project list`，再用 `which <cli>` 误判未安装 | 每个 `subskills/**/SKILL.md` 都加“直接加载保护”：说明可能未读主 skill；每条命令必须 `source "<SKILL_DIR>/find_cli.sh" && "$CLI_BIN" ...`；禁止 `which <cli>` 判安装 |
 | 17 | **能力咨询没有使用引导** | 用户问“数据导出怎么用/有什么能力”，Agent 要么直接开始执行，要么只泛泛说“支持导出” | 在 skill 中增加“怎么用/有什么能力”场景：给能力边界 + 3~6 条可复制自然语言提示词；明确这类咨询只输出说明，不跑 CLI、不输出写操作确认卡片 |
 
 ---
 
-## 四、好实践速查（datamind/SKILL.md 8 条精华）
+## 四、好实践速查（example-cli/SKILL.md 8 条精华）
 
-> 想看「写得好」长什么样，先读这一节。完整拆解在 [reference/datamind-best-practices.md](./reference/datamind-best-practices.md)。
+> 想看「写得好」长什么样，先读这一节。完整拆解在 [reference/cli-best-practices.md](./reference/cli-best-practices.md)。
 
 | # | 好实践 | 一句话 |
 |---|-------|-------|
@@ -246,7 +246,7 @@ echo "lines=$total negative_marks=$neg ratio=1/$((total / (neg + 1)))"
 ### Reference（深度文档）
 
 - [`reference/description-and-negative-cases.md`](./reference/description-and-negative-cases.md) — description 调优 5 原则 + 负样本设计
-- [`reference/datamind-best-practices.md`](./reference/datamind-best-practices.md) — datamind/SKILL.md 8 条好实践逐项拆解
+- [`reference/cli-best-practices.md`](./reference/cli-best-practices.md) — example-cli/SKILL.md 8 条好实践逐项拆解
 - [`reference/anti-patterns-casebook.md`](./reference/anti-patterns-casebook.md) — 反模式案例库（含真实 Agent 失败转录）
 - [`reference/review-report-template.md`](./reference/review-report-template.md) — review 报告模板
 

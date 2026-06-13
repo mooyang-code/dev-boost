@@ -1,9 +1,9 @@
-# 正面教材：datamind/SKILL.md 好实践拆解
+# 正面教材：example-cli/SKILL.md 好实践拆解
 
-> 本文是"为什么 datamind/SKILL.md 是好范本"的逐项拆解，review 别的 skill 时可以拿来对照。
-> 引用路径：`<datamind 仓库>/skills/datamind/SKILL.md`。
+> 本文是"为什么 example-cli/SKILL.md 是好范本"的逐项拆解，review 别的 skill 时可以拿来对照。
+> 引用路径：`<example-cli 仓库>/skills/example-cli/SKILL.md`。
 
-datamind/SKILL.md 是经过 6 轮以上真实 Agent 失败迭代打磨出来的，下面 8 个实践都对应**实际踩过的坑 + 实际生效的修复**。
+example-cli/SKILL.md 是经过 6 轮以上真实 Agent 失败迭代打磨出来的，下面 8 个实践都对应**实际踩过的坑 + 实际生效的修复**。
 
 ---
 
@@ -51,21 +51,21 @@ Agent 给用户错误指引或被 CLI 直接拒绝执行。
 
 ## 实践 2 — 把 5 条防抄红线和 ✅/❌/💡 三态对齐
 
-datamind/SKILL.md 的 token 规则段落（铁律 §1）写法：
+example-cli/SKILL.md 的 token 规则段落（铁律 §1）写法：
 
 ```markdown
 🚨 三条防抄红线（违反必 401，无一例外）：
 
 1. **禁止把"含 ... / xxxxxx / … 的样例 token"原样抄进命令**
-2. **禁止照抄 find_dm.sh 自动加载提示里出现的"长度 51"等数字**
+2. **禁止照抄 find_cli.sh 自动加载提示里出现的"长度 51"等数字**
 3. **禁止跨 Shell 调用依赖 $API_TOKEN**
 
-❌ **典型错误**：以为上一条 source 过了，第二条直接写 $DM ...
+❌ **典型错误**：以为上一条 source 过了，第二条直接写 $CLI_BIN ...
   报错形态固定：command not found: --token / --gateway / 或 --<任何首个 flag>
   ——只要看到这个 pattern，100% 是漏掉了 source
 
-💡 写法成本极低：把 unset SKILL_DIR DM && source ... && "$DM" ...
-   当成 datamind 命令的"必备前缀"
+💡 写法成本极低：把 unset SKILL_DIR CLI_BIN && source ... && "$CLI_BIN" ...
+   当成 示例 CLI 命令的"必备前缀"
 ```
 
 ### 为什么是好实践
@@ -80,14 +80,14 @@ datamind/SKILL.md 的 token 规则段落（铁律 §1）写法：
 
 ## 实践 3 — 报错速查表（让 Agent 反向匹配）
 
-datamind/SKILL.md「找到 CLI 二进制 → 报错速查」一节给了一张 7 行表：
+example-cli/SKILL.md「找到 CLI 二进制 → 报错速查」一节给了一张 7 行表：
 
 ```markdown
 | 报错 | 真正原因 | 修法 |
 |------|---------|------|
-| ❌ 找不到二进制: <某路径>/moo-dm-... | 把不相关目录当 SKILL_DIR 硬编码 | 用平台真实路径重新 source |
-| command not found: --help（紧跟 source 之后） | 把 source ... && $DM --help 写成同一行 | 用 && 串联整段 |
-| command not found: --token / --gateway | 本次 Shell 调用没 source，$DM 是空字符串 | 把 source ... 当必备前缀，每条都加 |
+| ❌ 找不到二进制: <某路径>/<cli>-... | 把不相关目录当 SKILL_DIR 硬编码 | 用平台真实路径重新 source |
+| command not found: --help（紧跟 source 之后） | 把 source ... && $CLI_BIN --help 写成同一行 | 用 && 串联整段 |
+| command not found: --token / --gateway | 本次 Shell 调用没 source，$CLI_BIN 是空字符串 | 把 source ... 当必备前缀，每条都加 |
 | 401 unauthorized / 403 forbidden | 按概率排：① 没 source ② source 失败仍引 $TOKEN ③ 占位串 ④ 真过期 | 见对应修法 |
 | ...
 ```
@@ -104,7 +104,7 @@ review 别的 skill 时，凡是有 CLI 调用的 skill 都应该有类似一张
 
 ## 实践 4 — 给"项目 ID 备忘"和"频道枚举备忘"省调用
 
-datamind/SKILL.md「项目与字段」一节里有两张速查表：
+example-cli/SKILL.md「项目与字段」一节里有两张速查表：
 
 1. **常用 `project_id` 备忘**（5 个最高频项目）
 2. **常用频道（type）枚举备忘**（37 行 type↔频道名映射）
@@ -132,7 +132,7 @@ datamind/SKILL.md「项目与字段」一节里有两张速查表：
 
 ## 实践 5 — 高危场景的「两轮确认」模板
 
-datamind/SKILL.md 对所有写操作（`export create` / `clean create` / `dashboard create` / `cronjob create` / `upload`）强制两轮确认：
+example-cli/SKILL.md 对所有写操作（`export create` / `clean create` / `dashboard create` / `cronjob create` / `upload`）强制两轮确认：
 
 1. **第一轮（自然语言层）**：用中文复述理解结果，等用户回复"是/确认/继续"
 2. **第二轮（系统参数层）**：展示翻译后的真实参数（project_id、filter JSON 等），再次等待确认
@@ -168,17 +168,17 @@ datamind/SKILL.md 对所有写操作（`export create` / `clean create` / `dashb
 
 ## 实践 6 — 官方轮询模板 + 反模式列表
 
-datamind/SKILL.md 铁律 §4 给了「**一行 jq 拿状态 + 下载链接**」+「**循环模板**」+「**4 条反模式**」三件套：
+example-cli/SKILL.md 铁律 §4 给了「**一行 jq 拿状态 + 下载链接**」+「**循环模板**」+「**4 条反模式**」三件套：
 
 ```bash
 # ✅ 一行版（首选）
-"$DM" ... export status --task-id <id> \
+"$CLI_BIN" ... export status --task-id <id> \
   | tee /tmp/export_status.json \
   | jq -r '"status=\(.status) ... url=\((.steps[]|...).download_url)"'
 
 # ✅ 循环版（最多 10 分钟）
 for _ in $(seq 1 60); do
-  resp=$("$DM" ... export status --task-id <id>)
+  resp=$("$CLI_BIN" ... export status --task-id <id>)
   st=$(printf '%s' "$resp" | jq -r '.status')
   case "$st" in
     completed|failed) ... ; break ;;
@@ -205,7 +205,7 @@ review 任何含「创建任务 → 等结果」的 skill 都应该有这一组 
 
 ## 实践 7 — 「场景→文件索引」表
 
-datamind/SKILL.md 末尾有一张 14 行索引表：
+example-cli/SKILL.md 末尾有一张 14 行索引表：
 
 ```markdown
 | 我想做… | 读这里 |
@@ -240,7 +240,7 @@ datamind/SKILL.md 末尾有一张 14 行索引表：
 
 ## 实践 8 — 把"动态看板创建"放在 SKILL.md 里强约束（其它放 references）
 
-datamind/SKILL.md 把绝大部分子命令的细节都迁到 `references/`，但**唯独**「动态看板创建」（`dashboard create --render-mode dynamic`）放在 SKILL.md 主文件里：
+example-cli/SKILL.md 把绝大部分子命令的细节都迁到 `references/`，但**唯独**「动态看板创建」（`dashboard create --render-mode dynamic`）放在 SKILL.md 主文件里：
 
 - 第一步：收集必填信息（12 项 checklist）
 - 第二步：校验规则（7 项校验项）
@@ -266,9 +266,9 @@ datamind/SKILL.md 把绝大部分子命令的细节都迁到 `references/`，但
 
 ---
 
-## 总结：datamind/SKILL.md 的「不可见」最佳实践
+## 总结：example-cli/SKILL.md 的「不可见」最佳实践
 
-最后总结 4 条**不在文档表面**但贯穿整份 datamind/SKILL.md 的设计哲学：
+最后总结 4 条**不在文档表面**但贯穿整份 example-cli/SKILL.md 的设计哲学：
 
 1. **规则先于细节** → 铁律 6 条永远在最顶部，Agent 加载时第一眼看到
 2. **报错指纹优先** → 每条规则都附"违反后会出现什么报错"，让 Agent 反向匹配

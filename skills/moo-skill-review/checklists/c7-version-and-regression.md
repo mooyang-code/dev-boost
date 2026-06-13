@@ -17,7 +17,7 @@ skill 是「文档 + CLI 二进制 + 配套脚本」的**三位一体**产物。
 
 ### 坑 2 — 改完没同步到安装目录
 
-Agent 安装目录（每个产品不一样：`~/.box/...` / `~/Library/Application Support/Box/.../skills/datamind/` / `~/.workbuddy/skills/datamind/`）。dev-boost 仓库改完了，但**没同步**过去 → Agent 仍在跑老 SKILL + 老二进制 → 反复试错你以为修过的坑。
+Agent 安装目录（每个产品不一样：`~/.box/...` / `~/Library/Application Support/Box/.../skills/example-cli/` / `~/.workbuddy/skills/example-cli/`）。dev-boost 仓库改完了，但**没同步**过去 → Agent 仍在跑老 SKILL + 老二进制 → 反复试错你以为修过的坑。
 
 ### 坑 3 — `custom-build.sh` 没传 `--bump` 也炸
 
@@ -50,23 +50,23 @@ go build -ldflags "
 
 ```bash
 # 1. 查老安装目录在哪（举例：用户全局搜）
-ls "$HOME/.workbuddy/skills/datamind" 2>/dev/null
-ls "$HOME/Library/Application Support/Box/engine/skills"/*/datamind 2>/dev/null
+ls "$HOME/.workbuddy/skills/example-cli" 2>/dev/null
+ls "$HOME/Library/Application Support/Box/engine/skills"/*/example-cli 2>/dev/null
 
-# 2. 同步 SKILL + references + find_dm.sh + 二进制
+# 2. 同步 SKILL + references + find_cli.sh + 二进制
 INSTALL_DIR="<上一步找到的目录>"
-cp skills/datamind/SKILL.md "$INSTALL_DIR/"
-cp -r skills/datamind/references "$INSTALL_DIR/"
-cp skills/datamind/find_dm.sh "$INSTALL_DIR/"
-cp dist/moo-dm-*  "$INSTALL_DIR/"
-chmod +x "$INSTALL_DIR/"moo-dm-*
+cp skills/example-cli/SKILL.md "$INSTALL_DIR/"
+cp -r skills/example-cli/references "$INSTALL_DIR/"
+cp skills/example-cli/find_cli.sh "$INSTALL_DIR/"
+cp dist/<cli>-*  "$INSTALL_DIR/"
+chmod +x "$INSTALL_DIR/"<cli>-*
 
 # 3. 跑 SKILL 顶部的新手三连
-unset SKILL_DIR DM && source "$INSTALL_DIR/find_dm.sh" && "$DM" --version
-unset SKILL_DIR DM && source "$INSTALL_DIR/find_dm.sh" \
-  && "$DM" --token "$API_TOKEN" --gateway <url> project list | jq '.items|length'
-unset SKILL_DIR DM && source "$INSTALL_DIR/find_dm.sh" \
-  && "$DM" --token "$API_TOKEN" --gateway <url> schema export create \
+unset SKILL_DIR CLI_BIN && source "$INSTALL_DIR/find_cli.sh" && "$CLI_BIN" --version
+unset SKILL_DIR CLI_BIN && source "$INSTALL_DIR/find_cli.sh" \
+  && "$CLI_BIN" --token "$API_TOKEN" --gateway <url> project list | jq '.items|length'
+unset SKILL_DIR CLI_BIN && source "$INSTALL_DIR/find_cli.sh" \
+  && "$CLI_BIN" --token "$API_TOKEN" --gateway <url> schema export create \
   | jq '.commands[0].flags|map(.name)'
 ```
 
@@ -81,15 +81,15 @@ unset SKILL_DIR DM && source "$INSTALL_DIR/find_dm.sh" \
 
 ```bash
 # 1. 查 CLI 版本
-unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" && "$DM" --version
+unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_cli.sh" && "$CLI_BIN" --version
 
 # 2. 跑一条只读命令验证 token + 网关
-unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" \
-  && "$DM" --token "$API_TOKEN" --gateway <url> project list | jq '.items|length'
+unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_cli.sh" \
+  && "$CLI_BIN" --token "$API_TOKEN" --gateway <url> project list | jq '.items|length'
 
 # 3. 看复杂参数 schema 是否带 json_schema + remarks
-unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" \
-  && "$DM" --token "$API_TOKEN" --gateway <url> schema export create \
+unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_cli.sh" \
+  && "$CLI_BIN" --token "$API_TOKEN" --gateway <url> schema export create \
   | jq '.commands[0].flags[] | select(.name=="filter") | {has_schema:(.json_schema|length>0), has_remarks:(.remarks|length>0)}'
 ```
 

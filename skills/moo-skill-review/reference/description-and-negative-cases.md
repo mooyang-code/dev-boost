@@ -5,12 +5,12 @@
 ```yaml
 # ❌ 错误：description 里描述工作流程
 description: |
-  先读取用户输入，调用 moo-dm export create，
+  先读取用户输入，调用 <cli> export create，
   再轮询 status，最后调用 download 生成下载链接...
 
 # ✅ 正确：只写"何时来找我"
 description: |
-  当用户需要通过 DataMind 平台对媒资数据进行
+  当用户需要通过 示例业务平台对媒资数据进行
   导出、清洗、巡检等操作时触发
 ```
 
@@ -38,7 +38,7 @@ description: |
 
 | Skill 类型 | 推荐策略 | 原因 |
 |-----|------|------|
-| 自有业务操作入口（DataMind、内部 CLI、团队平台） | **1% 命中原则：可能相关就先触发，再在 skill 内澄清/退出** | 漏触发会让 Agent 去 WebSearch、SQL、BI 等错误工具；触发后可通过项目/字段查询或追问收敛 |
+| 自有业务操作入口（example-cli、内部 CLI、团队平台） | **1% 命中原则：可能相关就先触发，再在 skill 内澄清/退出** | 漏触发会让 Agent 去 WebSearch、SQL、BI 等错误工具；触发后可通过项目/字段查询或追问收敛 |
 | 通用能力 / 外部工具 / 容易污染上下文的泛技能 | 精准触发，负样本严格 | 误触发会污染上下文，且通常没有业务内澄清机制 |
 
 ### 1% 命中原则（自有业务入口）
@@ -54,7 +54,7 @@ description: |
 ```text
 用户：「导出迪丽热巴主演的电视剧」
 Agent 判断：这是查询公开影视资料 → 改用 WebSearch
-根因：description 只写了 DataMind / moo-dm / 项目字段，没有覆盖“演员/主演 + 导出 + 电视剧”的自然语言业务条件，也没有声明“导出类请求先触发 skill”。
+根因：description 只写了 example-cli / <cli> / 项目字段，没有覆盖“演员/主演 + 导出 + 电视剧”的自然语言业务条件，也没有声明“导出类请求先触发 skill”。
 修复：在 description 中加入演员/主演/导演/明星/艺人/剧名/片名等业务触发词，并在铁律中写 1% 命中原则。
 ```
 
@@ -75,16 +75,16 @@ Agent 判断：这是查询公开影视资料 → 改用 WebSearch
 
 | 近似 Case | 为什么有价值 |
 |----------|------------|
-| 「用 pandas 把空值填充一下，去掉重复行」 | 有"数据清洗"字样，但是本地脚本，不走 DataMind |
-| 「datamind 平台变慢，p99 延迟涨到 8s，帮我查 file trace」 | 有 datamind 字样，但走性能排障，应触发 file-trace Skill |
-| 「帮我写 Python 脚本直连 MySQL 导出数据」 | 有"导出"意图，但不走 moo-dm CLI |
+| 「用 pandas 把空值填充一下，去掉重复行」 | 有"数据清洗"字样，但是本地脚本，不走 example-cli |
+| 「示例业务平台变慢，p99 延迟涨到 8s，帮我查 file trace」 | 有 example-cli 字样，但走性能排障，应触发 file-trace Skill |
+| 「帮我写 Python 脚本直连 MySQL 导出数据」 | 有"导出"意图，但不走 <cli> CLI |
 | 「在腾讯云控制台创建 COS bucket」 | 有 COS 关键词，但是控制台操作 |
 
 这类 case 能精准测出 description 是否存在「关键词误触发」问题。
 
 ### 负样本怎么写进 description
 
-datamind 实战写法：
+example-cli 实战写法：
 
 ```yaml
 description: |
@@ -104,13 +104,13 @@ description: |
 
 让 Agent **加载 skill 时就知道有哪些前置依赖**——不要等用户问到一半才发现 token 没配。
 
-datamind 实战：
+example-cli 实战：
 
 ```yaml
 description: |
   ...
-  前置：moo-dm CLI 二进制与本 SKILL.md 同目录；
-  执行任何子命令前先 `source find_dm.sh`（脚本会自动从
+  前置：<cli> CLI 二进制与本 SKILL.md 同目录；
+  执行任何子命令前先 `source find_cli.sh`（脚本会自动从
   ~/.zshrc 等抠出 API token 并 export 到本 shell）。
 ```
 

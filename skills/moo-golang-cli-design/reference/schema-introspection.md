@@ -45,7 +45,7 @@
 - 通过 cobra annotation 标注枚举值，让 Agent 直接拿到合法值（无需读 Long 描述）
 - 同时输出 `exit_codes` / `error_types`，让 Agent 程序化获取退出码契约
 
-## 实现（直接拷贝 datamind 的 schema.go）
+## 实现（直接拷贝 示例平台的 schema.go）
 
 完整源码见 `github.com/mooyang-code/xData-mini/storage/cmd/cli/schema.go`，约 280 行。
 关键代码片段：
@@ -53,7 +53,7 @@
 ### 注册 enum 值
 
 ```go
-const AnnotationEnum = "moo.dm/enum"   // 改成你 CLI 的命名空间
+const AnnotationEnum = "example.cli/enum"   // 改成你 CLI 的命名空间
 
 // RegisterEnum 给 flag 标注枚举可选值，schema 输出会带上 enum 字段。
 // 调用方：

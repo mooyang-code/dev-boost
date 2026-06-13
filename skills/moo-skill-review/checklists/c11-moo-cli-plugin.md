@@ -28,7 +28,7 @@
 
 ```yaml
 ---
-name: datamind                           # ← 必须 = 二进制文件名前缀
+name: example-cli                           # ← 必须 = 二进制文件名前缀
 description: "媒资数据治理... 当用户问 export/清洗/巡检/对账/看板/cron/UDF 时触发..."
 keywords:                                # 推荐手写
   - 数据治理
@@ -43,8 +43,8 @@ keywords:                                # 推荐手写
 
 - [ ] **二进制在发布包根目录**，不放子目录
 - [ ] **二进制命名严格** `<name>-<os>-<arch>`，分隔符用 `-`（不是 `_`）
-  - ✅ `datamind-darwin-arm64`
-  - ❌ `datamind_darwin_arm64` / `bin/datamind-darwin-arm64` / `datamind-v1.0.0-darwin-arm64`
+  - ✅ `example-cli-darwin-arm64`
+  - ❌ `example-cli_darwin_arm64` / `bin/example-cli-darwin-arm64` / `example-cli-v1.0.0-darwin-arm64`
 - [ ] **4 平台齐全**（推荐）：`darwin-arm64` / `darwin-amd64` / `linux-amd64` / `linux-arm64`
 - [ ] **二进制有执行位**（0o111），大小 ≤ 50MB
 - [ ] **发布包内不含 `plugin.yaml`**——由 admin 流程自动生成；若包里带了会被 preflight 拒绝
@@ -107,18 +107,18 @@ moo-admin release-pkg /path/to/your-plugin-pkg.zip --channel=beta --dry-run
 ## 反模式
 
 ```text
-❌ SKILL.md 写 name: datamind，但二进制叫 moo-dm-darwin-arm64
+❌ SKILL.md 写 name: example-cli，但二进制叫 <cli>-darwin-arm64
    → preflight 报 "binary_errors: name mismatch"；改二进制文件名或改 frontmatter。
 
 ❌ 发布包里塞一个 plugin.yaml 以为会被 admin 使用
    → preflight 报 "pkg_invalid: plugin.yaml must not be in pkg"；
      plugin.yaml 由 admin 自动生成，开发者不应手写。
 
-❌ 二进制用版本号命名：datamind-v1.0.0-darwin-arm64
+❌ 二进制用版本号命名：example-cli-v1.0.0-darwin-arm64
    → 版本号通过 --version 传入。命名里带版本会让后续 CI 复用出现一堆分支。
 
 ❌ 把 4 个平台的 zip 分别发：
-   moo-admin release-pkg datamind-darwin-arm64.zip  (只含 1 个二进制)
+   moo-admin release-pkg example-cli-darwin-arm64.zip  (只含 1 个二进制)
    → 一次应该发一个完整包，4 平台齐全；否则客户端其它平台用户无法升级。
 
 ❌ 每次发布都让 admin LLM 抽 keywords，不在 frontmatter 固化

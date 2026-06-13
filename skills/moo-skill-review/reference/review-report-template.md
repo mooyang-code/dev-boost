@@ -16,7 +16,7 @@
 
 | # | 类目 | 文件:行 | 问题 | 修复建议 |
 |---|------|---------|------|---------|
-| 1 | C2 CLI契约 | SKILL.md:42 | 命令缺 `source find_dm.sh` 前缀，跨 Shell 调用 `$DM` 为空 | 改为 `unset SKILL_DIR DM && source "<SKILL_DIR>/find_dm.sh" && "$DM" ...` |
+| 1 | C2 CLI契约 | SKILL.md:42 | 命令缺 locator script 前缀，跨 Shell 调用 `$CLI_BIN` 为空 | 改为 `unset SKILL_DIR CLI_BIN && source "<SKILL_DIR>/find_cli.sh" && "$CLI_BIN" ...` |
 | 2 | C3 Token | SKILL.md:88 | 示例用 `--token "<api-token>"` 占位串，Agent 会原样发 → 401 | 改为 `--token "$API_TOKEN"`（同条命令内 source） |
 | 3 | C5 输出契约 | SKILL.md:120 | 残留 `--output json`，CLI 已删该 flag → `unknown flag` | 全文 rg 删除 `--output (json|table)` |
 
@@ -34,19 +34,19 @@
 INSTALL_DIR="<你的 Agent 安装目录>"
 cp skills/<skill>/SKILL.md "$INSTALL_DIR/"
 cp -r skills/<skill>/references "$INSTALL_DIR/"
-cp skills/<skill>/find_dm.sh "$INSTALL_DIR/"
-cp dist/moo-dm-* "$INSTALL_DIR/"
-chmod +x "$INSTALL_DIR/"moo-dm-*
+cp skills/<skill>/find_cli.sh "$INSTALL_DIR/"
+cp dist/<cli>-* "$INSTALL_DIR/"
+chmod +x "$INSTALL_DIR/"<cli>-*
 
 # 2. 验证 source + token 自加载
-unset SKILL_DIR DM && source "$INSTALL_DIR/find_dm.sh" && "$DM" --version
+unset SKILL_DIR CLI_BIN && source "$INSTALL_DIR/find_cli.sh" && "$CLI_BIN" --version
 
 # 3. 验证只读命令
-unset SKILL_DIR DM && source "$INSTALL_DIR/find_dm.sh" \
-  && "$DM" --token "$API_TOKEN" --gateway <url> project list | jq '.items|length'
+unset SKILL_DIR CLI_BIN && source "$INSTALL_DIR/find_cli.sh" \
+  && "$CLI_BIN" --token "$API_TOKEN" --gateway <url> project list | jq '.items|length'
 
 # 4. 故意拼错参数，确认错误清晰
-"$DM" export status --task fake-id 2>&1 | head -5; echo "exit=$?"
+"$CLI_BIN" export status --task fake-id 2>&1 | head -5; echo "exit=$?"
 ```
 
 三条全绿 → 提 PR；任一不绿 → 回到对应 checklist。
