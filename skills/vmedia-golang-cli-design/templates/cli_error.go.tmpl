@@ -1,0 +1,213 @@
+// 模板：把 <YOUR-CLI> 替换为你的 CLI 名（如 vmedia-foo / vmedia-dm）。
+// 这份文件提供：
+//   1. 结构化错误对象 CLIError（NDJSON 序列化到 stderr，给 Agent 修复指南）
+//   2. 错误类型常量 + 工厂函数（NewUsageError / NewNotFoundError / ...）
+//   3. PrintCLIErrorJSON（main 入口统一渲染）
+//   4. CheckBizCode（业务响应里 code/message 字段统一转 CLIError）
+//   5. isCobraUsageError（识别 cobra 解析阶段的字符串错误，归类为 ExitUsage）
+//
+// 与 exitcode.go.tmpl 配套使用：错误类型常量 → exitCodeForType → 退出码。
+
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+)
+
+// CLIError 是面向 Agent 的结构化错误。
+//
+// 序列化形态（NDJSON 单行，写入 stderr）：
+//
+//	{"error":"permission_denied",
+//	 "message":"缺少项目 xxx 的 export 权限",
+//	 "suggestion":"<YOUR-CLI> auth grant --project xxx --module export",
+//	 "retryable":false,
+//	 "detail":{"raw":"gateway error 403: ..."}}
+type CLIError struct {
+	Type       string         `json:"error"`
+	Message    string         `json:"message"`
+	Suggestion string         `json:"suggestion,omitempty"`
+	Retryable  bool           `json:"retryable"`
+	Detail     map[string]any `json:"detail,omitempty"`
+}
+
+// 错误类型常量（与 exitcode.go 的 exitCodeForType 一一对应）。
+const (
+	ErrTypeGeneric          = "generic_error"
+	ErrTypeUsage            = "invalid_argument"
+	ErrTypeNotFound         = "not_found"
+	ErrTypePermissionDenied = "permission_denied"
+	ErrTypeConflict         = "conflict"
+	ErrTypeRateLimited      = "rate_limited"
+	ErrTypeNetwork          = "network_error"
+	ErrTypeDryRunOK         = "dry_run_ok"
+)
+
+// Error 实现 error 接口。
+func (e *CLIError) Error() string {
+	if e.Suggestion == "" {
+		return fmt.Sprintf("[%s] %s", e.Type, e.Message)
+	}
+	return fmt.Sprintf("[%s] %s (suggestion: %s)", e.Type, e.Message, e.Suggestion)
+}
+
+// AsCLIError 在 err 链中找出 *CLIError；找不到返回 nil, false。
+func AsCLIError(err error) (*CLIError, bool) {
+	if err == nil {
+		return nil, false
+	}
+	var ce *CLIError
+	if errors.As(err, &ce) {
+		return ce, true
+	}
+	return nil, false
+}
+
+// isCLIErrorType 判断 err 是否为指定 Type 的 CLIError。
+//
+// 典型用途：写命令的 --if-not-exists 实现里，预查接口失败若是 NotFound 就当"未存在"处理。
+func isCLIErrorType(err error, typ string) bool {
+	ce, ok := AsCLIError(err)
+	return ok && ce.Type == typ
+}
+
+// PrintCLIErrorJSON 把 err 渲染为 NDJSON 单行写入 stderr。
+//
+// 非 CLIError 的普通错误也会被包装为 generic_error / invalid_argument 输出，
+// 保证 stderr 永远是结构化错误。
+func PrintCLIErrorJSON(err error) {
+	if err == nil {
+		return
+	}
+	ce, ok := AsCLIError(err)
+	if !ok {
+		// cobra/pflag 解析阶段返回的错误不是 *CLIError，但属于参数问题，
+		// 这里也归类为 invalid_argument，让 stderr JSON 与退出码（ClassifyError）一致。
+		typ := ErrTypeGeneric
+		suggestion := ""
+		if isCobraUsageError(err) {
+			typ = ErrTypeUsage
+			suggestion = "用 <YOUR-CLI> <cmd> --help 查看用法，或 <YOUR-CLI> schema <cmd> 查看完整参数定义"
+		}
+		ce = &CLIError{
+			Type:       typ,
+			Message:    err.Error(),
+			Suggestion: suggestion,
+			Retryable:  false,
+		}
+	}
+	b, mErr := json.Marshal(ce)
+	if mErr != nil {
+		fmt.Fprintf(os.Stderr, "{\"error\":\"generic_error\",\"message\":%q}\n", err.Error())
+		return
+	}
+	fmt.Fprintln(os.Stderr, string(b))
+}
+
+// ============================================================
+// 工厂方法
+// ============================================================
+
+// NewUsageError 参数错误（必填缺失、互斥冲突、值非法）。
+func NewUsageError(message, suggestion string) *CLIError {
+	return &CLIError{Type: ErrTypeUsage, Message: message, Suggestion: suggestion, Retryable: false}
+}
+
+// NewNotFoundError 资源不存在。
+func NewNotFoundError(message, suggestion string) *CLIError {
+	return &CLIError{Type: ErrTypeNotFound, Message: message, Suggestion: suggestion, Retryable: false}
+}
+
+// NewPermissionError 权限不足。
+func NewPermissionError(message, suggestion string) *CLIError {
+	return &CLIError{Type: ErrTypePermissionDenied, Message: message, Suggestion: suggestion, Retryable: false}
+}
+
+// NewConflictError 资源冲突或已存在。
+func NewConflictError(message, suggestion string) *CLIError {
+	return &CLIError{Type: ErrTypeConflict, Message: message, Suggestion: suggestion, Retryable: false}
+}
+
+// NewRateLimitedError 限流，建议退避重试。
+func NewRateLimitedError(message, suggestion string) *CLIError {
+	return &CLIError{Type: ErrTypeRateLimited, Message: message, Suggestion: suggestion, Retryable: true}
+}
+
+// NewNetworkError 网络/超时错误，建议重试。
+func NewNetworkError(message, suggestion string) *CLIError {
+	return &CLIError{Type: ErrTypeNetwork, Message: message, Suggestion: suggestion, Retryable: true}
+}
+
+// NewDryRunOK 表示 dry-run 成功完成（exit 10），不是真实执行。
+func NewDryRunOK(message string) *CLIError {
+	return &CLIError{Type: ErrTypeDryRunOK, Message: message, Retryable: false}
+}
+
+// WithDetail 链式追加 detail 字段。
+func (e *CLIError) WithDetail(key string, value any) *CLIError {
+	if e.Detail == nil {
+		e.Detail = map[string]any{}
+	}
+	e.Detail[key] = value
+	return e
+}
+
+// CheckBizCode 处理业务侧响应里的 code/message 字段（非网关层错误）。
+//
+// 设计意图：很多 *Rsp 把 code/message 放在响应体里返回（不是 RPC 错误），
+// 业务码 != 0 时统一转为带分类的 CLIError，避免每个调用点重复写 fmt.Errorf。
+//
+// 用法（写命令 RunE 内，必须放在 EmitIdempotent 之前）：
+//
+//	rsp, err := client.Create(ctx, req)
+//	if err != nil { return err }
+//	if e := CheckBizCode("CreateXxx", rsp.Code, rsp.Message); e != nil {
+//	    return e
+//	}
+//	return EmitIdempotent(cmd, rsp)
+//
+// 关键不变量：业务码 != 0 必须 return CLIError，否则失败响应会被幂等缓存。
+func CheckBizCode(op string, code int32, message string) error {
+	if code == 0 {
+		return nil
+	}
+	lower := strings.ToLower(message)
+	switch {
+	case strings.Contains(lower, "not found") || strings.Contains(lower, "不存在") || strings.Contains(lower, "未找到"):
+		return NewNotFoundError(
+			fmt.Sprintf("%s 失败: %s", op, message),
+			"用对应的 list / get 命令查询正确 ID 后重试",
+		).WithDetail("op", op).WithDetail("biz_code", code)
+	case strings.Contains(lower, "permission") || strings.Contains(lower, "权限") || strings.Contains(lower, "forbidden"):
+		return NewPermissionError(
+			fmt.Sprintf("%s 失败: %s", op, message),
+			"使用 <YOUR-CLI> auth grant 申请对应权限",
+		).WithDetail("op", op).WithDetail("biz_code", code)
+	case strings.Contains(lower, "exists") || strings.Contains(lower, "已存在") || strings.Contains(lower, "duplicate"):
+		return NewConflictError(
+			fmt.Sprintf("%s 失败: %s", op, message),
+			"改用 update / get；如确认幂等可加 --if-not-exists",
+		).WithDetail("op", op).WithDetail("biz_code", code)
+	case strings.Contains(lower, "rate limit") || strings.Contains(lower, "限流"):
+		return NewRateLimitedError(
+			fmt.Sprintf("%s 被限流: %s", op, message),
+			"指数退避后重试",
+		).WithDetail("op", op).WithDetail("biz_code", code)
+	case strings.Contains(lower, "invalid") || strings.Contains(lower, "参数"):
+		return NewUsageError(
+			fmt.Sprintf("%s 参数非法: %s", op, message),
+			"使用 <YOUR-CLI> schema <cmd> 查参数定义；或加 --verbose 查看完整请求",
+		).WithDetail("op", op).WithDetail("biz_code", code)
+	default:
+		return &CLIError{
+			Type:      ErrTypeGeneric,
+			Message:   fmt.Sprintf("%s 失败 (biz_code=%d): %s", op, code, message),
+			Retryable: false,
+			Detail:    map[string]any{"op": op, "biz_code": code, "raw": message},
+		}
+	}
+}

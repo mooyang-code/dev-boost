@@ -1,0 +1,108 @@
+// 模板：直接复制即可，无需替换占位符。
+//
+// 提供：
+//   1. IsStdoutTTY / IsStderrTTY —— 判断是否连接到真终端
+//   2. flagNoInteractive / flagYes —— 由 root.go 注册为全局 PersistentFlag
+//   3. IsInteractive / AssumedYes —— 决定是否允许 stdin prompt
+//   4. SymbolOK / SymbolFail / SymbolWarn —— TTY 下出 ✓✗⚠，非 TTY 下出 [OK]/[FAIL]/[WARN]
+//
+// 依赖：golang.org/x/term（go mod tidy 自动加入）
+//
+// 在 root.go 的 init() 中需要注册全局 flag：
+//
+//	rootCmd.PersistentFlags().BoolVar(&flagNoInteractive, "no-interactive", false,
+//	    "禁止任何 stdin 提示（CI/Agent 必加）")
+//	rootCmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false,
+//	    "对所有交互式确认默认回答 yes")
+//
+// 在 root.go 的 PersistentPreRunE 中需要做 --output 自适应：
+//
+//	if !cmd.Flags().Changed("output") && IsStdoutTTY() {
+//	    flagOutput = "table"
+//	}
+
+package main
+
+import (
+	"os"
+
+	"golang.org/x/term"
+)
+
+// IsStdoutTTY 判断 stdout 是否连接到真正的终端。
+//
+// 典型用途：
+//   - --output 默认值自适应（TTY 走 table，否则走 json）
+//   - 装饰符（emoji、彩色）只在 TTY 输出
+func IsStdoutTTY() bool { return term.IsTerminal(int(os.Stdout.Fd())) }
+
+// IsStderrTTY 判断 stderr 是否连接到终端。
+// 用于决定 stderr 上的 progress 是否带 emoji；CI 把 stderr 重定向到文件时应是 false。
+func IsStderrTTY() bool { return term.IsTerminal(int(os.Stderr.Fd())) }
+
+// ============================================================
+// 交互模式：--no-interactive / --yes
+// ============================================================
+
+// flagNoInteractive 与 flagYes 由 root.go 的 init() 注册为全局 PersistentFlag。
+// 放在这里集中维护，方便所有 helper 直接引用。
+var (
+	flagNoInteractive bool
+	flagYes           bool
+)
+
+// IsInteractive 判断当前是否允许向用户发起交互式提示。
+//
+// 规则（任一条件触发返回 false）：
+//   - 显式传了 --no-interactive
+//   - 显式传了 --yes（视为已同意，不需要再问）
+//   - stdin 不是终端（CI / pipe 输入）
+//   - stdout 不是终端（重定向场景，问了用户也看不到）
+//
+// 调用方（新增交互式确认时）：
+//
+//	if !IsInteractive() {
+//	    return NewUsageError("destructive op needs explicit --yes in non-interactive mode", "...")
+//	}
+//	// ... prompt user ...
+func IsInteractive() bool {
+	if flagNoInteractive || flagYes {
+		return false
+	}
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return false
+	}
+	return IsStdoutTTY()
+}
+
+// AssumedYes 返回用户是否已经通过 --yes 隐式同意所有 prompt。
+// 命令内部对"是否真正执行 destructive 操作"的判断应基于此 + IsInteractive。
+func AssumedYes() bool { return flagYes }
+
+// ============================================================
+// 装饰符：根据 TTY 自适应输出 emoji / 纯文本
+// ============================================================
+
+// SymbolOK 返回成功符号：TTY 用 ✓，非 TTY 用 [OK]，便于在 CI 日志里 grep。
+func SymbolOK() string {
+	if IsStderrTTY() {
+		return "✓"
+	}
+	return "[OK]"
+}
+
+// SymbolFail 返回失败符号：TTY 用 ✗，非 TTY 用 [FAIL]。
+func SymbolFail() string {
+	if IsStderrTTY() {
+		return "✗"
+	}
+	return "[FAIL]"
+}
+
+// SymbolWarn 返回警告符号。
+func SymbolWarn() string {
+	if IsStderrTTY() {
+		return "⚠"
+	}
+	return "[WARN]"
+}

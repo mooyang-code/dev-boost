@@ -1,0 +1,262 @@
+// 模板：直接复制即可，无需替换占位符。
+//
+// 提供三类输入安全校验函数：
+//   1. ValidateInputURL / ValidateURLScheme / RejectDangerousURLScheme —— URL 协议白名单
+//   2. ValidateLocalPath —— 本地路径黑名单（拒 ~/.ssh / /etc / /sys / /proc 等）
+//   3. ValidateFileSize —— 上传文件大小上限
+//
+// 校验失败一律走 NewUsageError（exit=2），让 Agent 立即修参数，不发任何 RPC。
+//
+// 典型用法（写命令 RunE 内最早执行）：
+//
+//	if err := ValidateInputURL("input-file", inputFile); err != nil { return err }
+//	if err := ValidateLocalPath("config",   configPath);  err != nil { return err }
+//	if err := ValidateFileSize("file",      uploadFile, DefaultMaxUploadFileSize); err != nil { return err }
+
+package main
+
+import (
+	"fmt"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// ============================================================
+// URL 协议校验
+// ============================================================
+
+// 默认允许集：HTTP/HTTPS（外部下载） + COS（腾讯云对象存储）。
+// 业务有特殊需要时用 ValidateURLScheme 传入定制 allowed 集合。
+var defaultAllowedURLSchemes = []string{"http", "https", "cos"}
+
+// 显式高危协议黑名单：即使 allowed 没列也要拦——防止有人误用 `*` 之类放行所有 scheme。
+var deniedURLSchemes = map[string]string{
+	"file":       "file:// 协议会让服务端读本地文件（SSRF 风险）",
+	"javascript": "javascript: 不是合法的资源 URL",
+	"data":       "data: URL 会被某些服务端解析为内联资源",
+	"ftp":        "ftp:// 已被禁用",
+	"gopher":     "gopher:// 已被禁用",
+	"jar":        "jar:// 不是合法的资源 URL",
+}
+
+// ValidateInputURL 校验"输入文件 URL"（默认 allowed = http/https/cos）。
+func ValidateInputURL(flagName, value string) error {
+	return ValidateURLScheme(flagName, value, defaultAllowedURLSchemes)
+}
+
+// ValidateURLScheme 通用 URL scheme 校验。
+//
+// allowed 是允许的 scheme 集合（小写，不含 "://"）。
+// 空字符串视为"未提供"，required 校验由各命令自己做。
+func ValidateURLScheme(flagName, value string, allowed []string) error {
+	if value == "" {
+		return nil
+	}
+	u, err := url.Parse(value)
+	if err != nil {
+		return NewUsageError(
+			fmt.Sprintf("--%s 不是合法 URL: %v", flagName, err),
+			fmt.Sprintf("使用合法 URL，如 https://... 或 cos://bucket/key；允许协议: %s",
+				strings.Join(allowed, " / ")),
+		).WithDetail("flag", flagName).WithDetail("value", value)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme == "" {
+		return NewUsageError(
+			fmt.Sprintf("--%s 缺少协议前缀 (如 https://、cos://)", flagName),
+			fmt.Sprintf("允许协议: %s", strings.Join(allowed, " / ")),
+		).WithDetail("flag", flagName).WithDetail("value", value)
+	}
+	if reason, denied := deniedURLSchemes[scheme]; denied {
+		return NewUsageError(
+			fmt.Sprintf("--%s 使用了被禁用的协议 %q: %s", flagName, scheme, reason),
+			fmt.Sprintf("改用 %s", strings.Join(allowed, " / ")),
+		).WithDetail("flag", flagName).WithDetail("scheme", scheme)
+	}
+	for _, a := range allowed {
+		if scheme == strings.ToLower(a) {
+			return nil
+		}
+	}
+	return NewUsageError(
+		fmt.Sprintf("--%s 协议 %q 不在白名单内", flagName, scheme),
+		fmt.Sprintf("允许协议: %s", strings.Join(allowed, " / ")),
+	).WithDetail("flag", flagName).WithDetail("scheme", scheme)
+}
+
+// RejectDangerousURLScheme 是 ValidateURLScheme 的"软"版本：
+//
+// 用于参数语义上不是 URL（如 COS 内部 key），但仍要防 Agent 传入 file:// / javascript: 等危险串。
+// 行为：
+//   - 不含 "://" 的值视为路径/key，直接通过
+//   - 含 "://" 且 scheme 命中黑名单 → 报错
+//   - 含 "://" 但 scheme 是合法的（http/https/cos/...） → 通过
+func RejectDangerousURLScheme(flagName, value string) error {
+	if value == "" || (!strings.Contains(value, "://") && !strings.HasPrefix(strings.ToLower(value), "javascript:")) {
+		return nil
+	}
+	u, err := url.Parse(value)
+	if err != nil {
+		return NewUsageError(
+			fmt.Sprintf("--%s 包含 URL 形态但无法解析: %v", flagName, err),
+			"该参数应为路径/key，不要包含 :// 协议前缀",
+		).WithDetail("flag", flagName).WithDetail("value", value)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if reason, denied := deniedURLSchemes[scheme]; denied {
+		return NewUsageError(
+			fmt.Sprintf("--%s 使用了被禁用的协议 %q: %s", flagName, scheme, reason),
+			"该参数应为相对路径/COS key，不要带任何协议前缀",
+		).WithDetail("flag", flagName).WithDetail("scheme", scheme)
+	}
+	return nil
+}
+
+// ============================================================
+// 本地路径黑名单校验
+// ============================================================
+
+// 路径前缀黑名单：尝试把这些路径作为 --file / --data / --config 传入会被拒。
+//
+// 使用规范化（绝对路径 + symlink 解析后）的路径做前缀比对，避免被 `~/foo/../.ssh` 之类绕过。
+var deniedPathPrefixes = []string{
+	"/etc",
+	"/private/etc",         // macOS
+	"/var/run/secrets",     // k8s
+	"/proc",                // linux 进程信息
+	"/sys",                 // linux 内核
+	"/.ssh",
+	"/.aws",
+	"/.gnupg",
+	"/.kube",
+	"/.docker/config.json", // 单文件命中
+	"/.netrc",
+	"/.bash_history",
+	"/.zsh_history",
+}
+
+// ValidateLocalPath 校验本地文件/目录路径，拦截敏感目录。
+//
+// 不要求路径必须存在（Open 时会自然报错），但若存在则必须不能是已知敏感前缀。
+func ValidateLocalPath(flagName, path string) error {
+	if path == "" {
+		return nil
+	}
+	abs := normalizePath(path)
+	for _, deny := range deniedPathPrefixes {
+		if hitsDeniedPrefix(abs, deny) {
+			return NewUsageError(
+				fmt.Sprintf("--%s 指向敏感路径 %q（前缀命中黑名单 %q）", flagName, path, deny),
+				"出于安全考虑，CLI 不允许从用户密钥/凭据/系统配置目录读取文件",
+			).WithDetail("flag", flagName).WithDetail("path", path).WithDetail("denied_prefix", deny)
+		}
+	}
+	return nil
+}
+
+func normalizePath(path string) string {
+	expanded := expandHome(path)
+	abs, err := filepath.Abs(expanded)
+	if err != nil {
+		return expanded
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved
+	}
+	return abs
+}
+
+func expandHome(path string) string {
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			if path == "~" {
+				return home
+			}
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
+}
+
+// hitsDeniedPrefix 判断绝对路径 abs 是否命中黑名单前缀 deny。
+//
+//   - 黑名单形如 "/etc"：abs == "/etc" 或以 "/etc/" 开头都算命中
+//   - 黑名单形如 "/.ssh"：在路径任意位置作为完整目录段出现都算命中
+//     （配合 home 展开后，~/.ssh 会变成 /Users/foo/.ssh，再被 "/.ssh" 命中）
+func hitsDeniedPrefix(abs, deny string) bool {
+	if strings.HasPrefix(deny, "/.") {
+		seg := deny[1:]
+		return strings.HasSuffix(abs, "/"+seg) ||
+			strings.Contains(abs, "/"+seg+"/")
+	}
+	return abs == deny || strings.HasPrefix(abs, deny+"/")
+}
+
+// ============================================================
+// 文件大小上限校验
+// ============================================================
+
+// DefaultMaxUploadFileSize 默认单文件大小上限（5GiB）。保守值，足够覆盖正常场景，
+// 又能拦截误传整个磁盘镜像的事故。
+const DefaultMaxUploadFileSize = int64(5) * 1024 * 1024 * 1024
+
+// ValidateFileSize 校验本地文件大小不超过 maxBytes。
+//
+// path 必须存在且为常规文件，否则返回 NotFound/Usage 错误。
+// maxBytes <= 0 表示不限制（直接返回 nil）。
+func ValidateFileSize(flagName, path string, maxBytes int64) error {
+	if path == "" || maxBytes <= 0 {
+		return nil
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return NewUsageError(
+				fmt.Sprintf("--%s 指向的文件不存在: %s", flagName, path),
+				"确认路径正确；相对路径基于当前工作目录",
+			).WithDetail("flag", flagName).WithDetail("path", path)
+		}
+		return NewUsageError(
+			fmt.Sprintf("--%s 读取文件信息失败: %v", flagName, err),
+			"确认文件可读、权限正确",
+		).WithDetail("flag", flagName).WithDetail("path", path)
+	}
+	if info.IsDir() {
+		return nil
+	}
+	if info.Size() > maxBytes {
+		return NewUsageError(
+			fmt.Sprintf("--%s 文件大小 %s 超出上限 %s",
+				flagName, humanBytes(info.Size()), humanBytes(maxBytes)),
+			"用 --max-file-size 调整上限（字节数）；或拆分文件后再上传",
+		).WithDetail("flag", flagName).
+			WithDetail("size", info.Size()).
+			WithDetail("max", maxBytes)
+	}
+	return nil
+}
+
+// humanBytes 把字节数格式化成人类可读字符串。
+func humanBytes(n int64) string {
+	const (
+		_  = iota
+		KB = 1 << (10 * iota)
+		MB
+		GB
+		TB
+	)
+	switch {
+	case n >= TB:
+		return fmt.Sprintf("%.2f TiB", float64(n)/float64(TB))
+	case n >= GB:
+		return fmt.Sprintf("%.2f GiB", float64(n)/float64(GB))
+	case n >= MB:
+		return fmt.Sprintf("%.2f MiB", float64(n)/float64(MB))
+	case n >= KB:
+		return fmt.Sprintf("%.2f KiB", float64(n)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
+}

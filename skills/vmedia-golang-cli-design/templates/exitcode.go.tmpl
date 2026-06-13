@@ -1,0 +1,113 @@
+// 模板：直接复制即可，无需替换占位符。
+//
+// 提供：
+//   1. ExitOK / ExitGeneric / ExitUsage / ... 退出码常量
+//   2. ClassifyError(err) → 退出码（main 入口调用）
+//   3. isCobraUsageError 识别 cobra/pflag 解析错误（自动归类 ExitUsage）
+//
+// 与 cli_error.go.tmpl 配套：错误类型常量 → exitCodeForType → 退出码。
+
+package main
+
+import "strings"
+
+// 退出码契约（一旦发布即 API，不允许重新定义已有码的语义）。
+//
+// 详细处理建议见 reference/exit-codes.md。
+const (
+	ExitOK               = 0
+	ExitGeneric          = 1  // 未分类错误（兜底）
+	ExitUsage            = 2  // 参数错误（必填缺失/枚举非法/dry-run 校验失败）
+	ExitNotFound         = 3  // 资源不存在
+	ExitPermissionDenied = 4
+	ExitConflict         = 5  // 资源冲突或已存在
+	ExitRateLimited      = 6  // 建议指数退避后重试
+	ExitNetwork          = 7  // 网络错误或超时，建议重试
+	ExitDryRunOK         = 10 // dry-run 校验通过（**非真实执行**）
+)
+
+// ClassifyError 把错误转换为退出码。
+//
+// 规则：
+//   - nil → ExitOK
+//   - *CLIError → 按 Type 字段查表
+//   - cobra 内置参数错误（required/unknown flag/unknown command/argument）→ ExitUsage
+//   - 其他 → ExitGeneric
+//
+// main.go 入口：
+//
+//	if err := rootCmd.Execute(); err != nil {
+//	    PrintCLIErrorJSON(err)
+//	    os.Exit(ClassifyError(err))
+//	}
+func ClassifyError(err error) int {
+	if err == nil {
+		return ExitOK
+	}
+	if ce, ok := AsCLIError(err); ok {
+		return exitCodeForType(ce.Type)
+	}
+	if isCobraUsageError(err) {
+		return ExitUsage
+	}
+	return ExitGeneric
+}
+
+func exitCodeForType(typ string) int {
+	switch typ {
+	case ErrTypeUsage:
+		return ExitUsage
+	case ErrTypeNotFound:
+		return ExitNotFound
+	case ErrTypePermissionDenied:
+		return ExitPermissionDenied
+	case ErrTypeConflict:
+		return ExitConflict
+	case ErrTypeRateLimited:
+		return ExitRateLimited
+	case ErrTypeNetwork:
+		return ExitNetwork
+	case ErrTypeDryRunOK:
+		return ExitDryRunOK
+	default:
+		return ExitGeneric
+	}
+}
+
+// isCobraUsageError 识别 cobra/pflag 在参数解析阶段返回的错误。
+//
+// cobra 这类错误是普通 fmt.Errorf 文本，没法用 errors.As / sentinel 匹配，
+// 只能识别其稳定的英文短语。命中即视为 ExitUsage(2)，让 Agent 知道
+// "改参后重试"，而不是兜底 ExitGeneric(1)。
+//
+// 覆盖的典型样本（来自 spf13/cobra & spf13/pflag 源码）：
+//
+//	required flag(s) "foo" not set
+//	unknown flag: --foo
+//	unknown shorthand flag: 'x' in -x
+//	unknown command "foo" for "<YOUR-CLI>"
+//	invalid argument "abc" for "--count" flag: ...
+//	flag needs an argument: --foo
+//	bad flag syntax: -foo
+//	accepts <N> arg(s), received M
+func isCobraUsageError(err error) bool {
+	msg := err.Error()
+	prefixes := []string{
+		"required flag",
+		"unknown flag",
+		"unknown shorthand flag",
+		"unknown command",
+		"invalid argument",
+		"flag needs an argument",
+		"bad flag syntax",
+		"accepts ",
+		"requires at least",
+		"requires at most",
+	}
+	for _, p := range prefixes {
+		if strings.Contains(msg, p) {
+			return true
+		}
+	}
+	return false
+}

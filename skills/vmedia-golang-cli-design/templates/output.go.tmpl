@@ -1,0 +1,102 @@
+// 模板：业务结果输出 + 进度/提示日志统一出口。
+//
+// 这是 CLI 唯一允许写 stdout 的文件（lint-stdout.sh 的白名单只放它）。
+// 其他文件想往 stderr 写日志，必须用 progressln / progressf / hintln。
+//
+// 默认提供 json / table 两种 output；想加 yaml 之类自行扩展 printOutput 的 switch。
+
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+// printOutput 统一业务结果出口，按 --output 渲染并写到 stdout。
+//
+// 调用约定：
+//   - 失败路径**不要**调 printOutput，直接 return *CLIError，main 入口会渲染到 stderr
+//   - dry-run 通过路径用 EmitDryRun（内部 return NewDryRunOK，main 自动 exit 10）
+//   - 写命令用 EmitIdempotent（内部 = SaveIdempotent + printOutput）
+func printOutput(payload any) error {
+	switch flagOutput {
+	case "table":
+		// 简化实现：table 模式也走 json，业务可按类型自定义渲染
+		// 真实项目里在这里 switch payload 类型，调对应的 renderXxxTable
+		return printJSON(payload)
+	case "json", "":
+		return printJSON(payload)
+	default:
+		return NewUsageError(
+			fmt.Sprintf("--output %q 不支持", flagOutput),
+			"使用 json 或 table",
+		)
+	}
+}
+
+func printJSON(payload any) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
+	return enc.Encode(payload)
+}
+
+// ============================================================
+// stderr 日志：进度 + hint
+// ============================================================
+
+// progressln 在 stderr 打一行进度日志。lint-stdout.sh 不会拦截 stderr 写入。
+//
+// 用法：progressln("正在上传 %s ...", path)
+func progressln(format string, a ...any) {
+	if !flagVerbose && isQuietProgress(format) {
+		return
+	}
+	fmt.Fprintf(os.Stderr, format+"\n", a...)
+}
+
+// progressf 同 progressln 但不自动换行（很少用，主要给"上传中... 30% 50%"这种刷新场景）。
+func progressf(format string, a ...any) {
+	if !flagVerbose && isQuietProgress(format) {
+		return
+	}
+	fmt.Fprintf(os.Stderr, format, a...)
+}
+
+// hintln 在 stderr 打一行 [hint] 提示，无论 verbose 与否都输出。
+//
+// 用法：hintln("[idempotent] replay cache hit")
+func hintln(format string, a ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", a...)
+}
+
+// isQuietProgress 判断某行进度日志是否应该被 verbose=false 时静默。
+// 默认全部静默；含 [hint] / [error] / [warn] 前缀的强制输出。
+func isQuietProgress(format string) bool {
+	for _, prefix := range []string{"[hint]", "[error]", "[warn]"} {
+		if len(format) >= len(prefix) && format[:len(prefix)] == prefix {
+			return false
+		}
+	}
+	return true
+}
+
+// ============================================================
+// dry-run 出口
+// ============================================================
+
+// EmitDryRun 把 dry-run 计划写到 stdout，并返回 ExitDryRunOK 错误（exit=10）。
+//
+// 用法：
+//
+//	if dryRun {
+//	    plan := map[string]any{"would_create": req}
+//	    return EmitDryRun(plan)
+//	}
+func EmitDryRun(plan any) error {
+	if err := printJSON(plan); err != nil {
+		return err
+	}
+	return NewDryRunOK("dry-run validation passed; remove --dry-run to apply")
+}
